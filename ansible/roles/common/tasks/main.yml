@@ -1,16 +1,25 @@
+- name: Disable automatic apt updates
+  ansible.builtin.shell: |
+    systemctl stop unattended-upgrades 2>/dev/null || true
+    systemctl disable unattended-upgrades 2>/dev/null || true
+  changed_when: false
+
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true
     cache_valid_time: 3600
+    lock_timeout: 120
 
 - name: Upgrade all packages
   ansible.builtin.apt:
     upgrade: dist
+    lock_timeout: 120
 
 - name: Install base packages
   ansible.builtin.apt:
     name: "{{ base_packages }}"
     state: present
+    lock_timeout: 120
 
 - name: Create base platform directories
   ansible.builtin.file:
@@ -85,6 +94,7 @@
       - docker-buildx-plugin
       - docker-compose-plugin
     state: present
+    lock_timeout: 120
 
 - name: Add platform user to docker group
   ansible.builtin.user:
@@ -130,6 +140,7 @@
   ansible.builtin.apt:
     name: tailscale
     state: present
+    lock_timeout: 120
 
 - name: Enable IP forwarding for Tailscale
   ansible.builtin.sysctl:
@@ -166,6 +177,7 @@
   ansible.builtin.apt:
     name: fail2ban
     state: present
+    lock_timeout: 120
 
 - name: Enable fail2ban service
   ansible.builtin.systemd:
