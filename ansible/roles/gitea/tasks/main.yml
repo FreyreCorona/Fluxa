@@ -16,8 +16,10 @@
 
 - name: Start Gitea
   ansible.builtin.shell: |
-    docker compose up -d
+    docker compose pull && docker compose up -d
   args:
     chdir: "{{ platform_dir }}/gitea"
   register: gitea_start
-  changed_when: "'Started' in gitea_start.stdout or 'Creating' in gitea_start.stdout or 'Starting' in gitea_start.stdout"
+  retries: 3
+  delay: 15
+  until: gitea_start is succeeded

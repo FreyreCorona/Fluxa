@@ -15,8 +15,10 @@
 
 - name: Start monitoring stack
   ansible.builtin.shell: |
-    docker compose up -d
+    docker compose pull && docker compose up -d
   args:
     chdir: "{{ platform_dir }}/monitoring"
   register: monitoring_start
-  changed_when: "'Started' in monitoring_start.stdout or 'Creating' in monitoring_start.stdout or 'Starting' in monitoring_start.stdout"
+  retries: 3
+  delay: 15
+  until: monitoring_start is succeeded

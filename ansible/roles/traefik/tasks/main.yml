@@ -21,8 +21,10 @@
 
 - name: Start Traefik
   ansible.builtin.shell: |
-    docker compose up -d
+    docker compose pull && docker compose up -d
   args:
     chdir: "{{ platform_dir }}/traefik"
   register: traefik_start
-  changed_when: "'Started' in traefik_start.stdout or 'Creating' in traefik_start.stdout or 'Starting' in traefik_start.stdout"
+  retries: 3
+  delay: 15
+  until: traefik_start is succeeded

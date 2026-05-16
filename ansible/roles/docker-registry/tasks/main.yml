@@ -15,8 +15,10 @@
 
 - name: Start Docker Registry
   ansible.builtin.shell: |
-    docker compose up -d
+    docker compose pull && docker compose up -d
   args:
     chdir: "{{ platform_dir }}/registry"
   register: registry_start
-  changed_when: "'Started' in registry_start.stdout or 'Creating' in registry_start.stdout or 'Starting' in registry_start.stdout"
+  retries: 3
+  delay: 15
+  until: registry_start is succeeded

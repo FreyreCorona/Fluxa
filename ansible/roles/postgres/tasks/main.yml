@@ -15,8 +15,10 @@
 
 - name: Start PostgreSQL
   ansible.builtin.shell: |
-    docker compose up -d
+    docker compose pull && docker compose up -d
   args:
     chdir: "{{ platform_dir }}/postgres"
   register: pg_start
-  changed_when: "'Started' in pg_start.stdout or 'Creating' in pg_start.stdout or 'Starting' in pg_start.stdout"
+  retries: 3
+  delay: 15
+  until: pg_start is succeeded
