@@ -5,7 +5,6 @@
       --write-kubeconfig-mode 644
   args:
     creates: /usr/local/bin/k3s
-    warn: false
   when: k3s_role == 'server'
 
 - name: Read node token
@@ -24,5 +23,4 @@
     curl -sfL https://get.k3s.io | K3S_URL=https://{{ hostvars[groups['edge'][0]]['k3s_server_ip'] }}:6443 K3S_TOKEN={{ hostvars[groups['edge'][0]]['k3s_token'] }} sh -
   args:
     creates: /usr/local/bin/k3s
-    warn: false
   when: k3s_role == 'agent'
