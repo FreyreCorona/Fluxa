@@ -1,6 +1,7 @@
 bootstrap.zip
 
 # Ansible
+.cache/
 ansible/.cache/
 ansible/**/__pycache__/
 *.retry
