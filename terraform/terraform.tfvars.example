@@ -1,0 +1,15 @@
+# OCI Auth
+tenancy_ocid    = "ocid1.tenancy.oc1..<your-tenancy-ocid>"
+user_ocid       = "ocid1.user.oc1..<your-user-ocid>"
+fingerprint     = "<your-api-key-fingerprint>"
+private_key_path = "~/.oci/oci_api_key.pem"
+region          = "sa-saopaulo-1"
+
+# Secrets (cloud-init)
+tailscale_key   = "tskey-auth-<your-tailscale-key>"
+k3s_token       = "<random-32-char-token>"
+pg_password     = "<random-password>"
+grafana_password = "<random-password>"
+acme_email      = "admin@yourdomain.com"
+domain          = "yourdomain.com"
+traefik_users   = "admin:<htpasswd-hash>"
