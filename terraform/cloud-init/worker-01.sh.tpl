@@ -3,7 +3,7 @@ set -euo pipefail
 
 exec > /var/log/fluxa-bootstrap.log 2>&1
 
-echo "=== Fluxa control-01 bootstrap ==="
+echo "=== Fluxa worker-01 bootstrap ==="
 
 # ── Wait for apt ──
 while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock >/dev/null 2>&1; do sleep 1; done
@@ -13,7 +13,7 @@ apt-get update -y
 apt-get install -y tailscale docker.io
 
 # ── Tailscale ──
-tailscale up --auth-key "${tailscale_key}" --hostname control-01 --accept-routes
+tailscale up --auth-key "${tailscale_key}" --hostname worker-01 --accept-routes
 sleep 5
 
 TAILSCALE_IP=$(tailscale ip -4)
@@ -58,7 +58,7 @@ sleep 10
 
 # Permitir que workloads también corran aquí (hasta tener ARM A1)
 k3s kubectl taint nodes --all node-role.kubernetes.io/master- || true
-k3s kubectl label node control-01 node-role.kubernetes.io/worker=true || true
+k3s kubectl label node worker-01 node-role.kubernetes.io/worker=true || true
 
 # ── Observability stack (Docker Compose) ──
 mkdir -p /data/victoria /data/grafana

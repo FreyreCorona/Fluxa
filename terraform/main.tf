@@ -172,13 +172,13 @@ resource "oci_core_instance" "edge_01" {
   preserve_boot_volume = false
 }
 
-# ── control-01 ─────────────────────────────────────────────
+# ── worker-01 (control plane + DB + workloads temporales) ───
 
-resource "oci_core_instance" "control_01" {
+resource "oci_core_instance" "worker_01" {
   compartment_id      = local.compartment_id
   availability_domain = local.ad
-  display_name        = "control-01"
-  shape               = var.control_shape
+  display_name        = "worker-01"
+  shape               = var.worker_shape
 
   source_details {
     source_type = "image"
@@ -187,14 +187,14 @@ resource "oci_core_instance" "control_01" {
 
   create_vnic_details {
     subnet_id        = oci_core_subnet.fluxa.id
-    display_name     = "control-01-vnic"
+    display_name     = "worker-01-vnic"
     assign_public_ip = false
-    hostname_label   = "control-01"
+    hostname_label   = "worker-01"
   }
 
   metadata = {
     ssh_authorized_keys = tls_private_key.fluxa.public_key_openssh
-    user_data           = base64encode(templatefile("${path.module}/cloud-init/control-01.sh.tpl", {
+    user_data           = base64encode(templatefile("${path.module}/cloud-init/worker-01.sh.tpl", {
       tailscale_key     = var.tailscale_key
       pg_password       = var.pg_password
       k3s_token         = var.k3s_token
@@ -204,5 +204,3 @@ resource "oci_core_instance" "control_01" {
 
   preserve_boot_volume = false
 }
-
-# ── worker-01 (placeholder para ARM A1 futuro) ──────────────

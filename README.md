@@ -1,7 +1,7 @@
 # Fluxa — Modular PaaS
 
 PaaS modular sobre Oracle Cloud Always Free.  
-**2 nodos AMD Micro** (edge + control) + **futuro ARM A1** (worker).  
+**2 nodos AMD Micro** (edge + worker) + **futuro ARM A1** (worker dedicado).  
 Todo provisionado con Terraform + CloudInit — sin Ansible.
 
 ---
@@ -27,8 +27,15 @@ Todo provisionado con Terraform + CloudInit — sin Ansible.
 │                         │                                    │
 │                         v                                    │
 │  ┌──────────────────────────────────────────────────────┐    │
-│  │  worker-01  (ARM A1 — futuro)                        │    │
-│  │  k3s agent · workloads                               │    │
+│  │  worker-01  (AMD Micro, 1 GB)                        │    │
+│  │  k3s server · PostgreSQL · VictoriaMetrics            │    │
+│  │  Grafana · UptimeKuma · (y workloads)                │    │
+│  └──────────────────────┬───────────────────────────────┘    │
+│                         │                                    │
+│                         v                                    │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │  worker-02  (ARM A1 — futuro)                        │    │
+│  │  k3s agent · workloads dedicados                     │    │
 │  └──────────────────────────────────────────────────────┘    │
 │                                                              │
 │  OCI Services integrados:                                    │
@@ -50,7 +57,7 @@ GitHub Actions → build image → push GHCR
     ↓
 kubectl apply (manual o GitHub Actions con kubeconfig)
     ↓
-k3s scheduling → worker-01
+k3s scheduling → worker-01 (o worker-02 ARM futuro)
     ↓
 Traefik ingress update → TLS automático
     ↓
@@ -66,10 +73,10 @@ Sin Go API. k3s + Traefik resuelven el deployment flow.
 | Nodo      | Shape             | RAM  | Rol                          | Tipo      |
 |-----------|-------------------|------|------------------------------|-----------|
 | edge-01   | VM.Standard.E2.1.Micro | 1 GB | Ingress stateless      | Oracle    |
-| control-01| VM.Standard.E2.1.Micro | 1 GB | Control plane + DB     | Oracle    |
-| worker-01 | VM.Standard.A1.Flex*   | 12 GB| Runtime workloads      | Oracle    |
+| worker-01 | VM.Standard.E2.1.Micro | 1 GB | Control plane + DB + workloads | Oracle    |
+| worker-02 | VM.Standard.A1.Flex*   | 12 GB| Runtime workloads dedicados    | Oracle    |
 
-\* ARM A1 pendiente de disponibilidad. Mientras tanto, worker corre en el mismo control-01 como nodo k3s.
+\* ARM A1 pendiente de disponibilidad.
 
 ---
 

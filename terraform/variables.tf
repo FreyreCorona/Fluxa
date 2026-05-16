@@ -51,16 +51,10 @@ variable "edge_shape" {
   default     = "VM.Standard.E2.1.Micro"
 }
 
-variable "control_shape" {
-  description = "OCI instance shape for control-01"
+variable "worker_shape" {
+  description = "OCI instance shape for worker-01 (E2.1.Micro for now, A1.Flex when available)"
   type        = string
   default     = "VM.Standard.E2.1.Micro"
-}
-
-variable "worker_shape" {
-  description = "OCI instance shape for worker-01 (ARM A1 when available)"
-  type        = string
-  default     = "VM.Standard.A1.Flex"
 }
 
 # ── Secrets (pasados a cloud-init) ─────────────────────────
