@@ -1,0 +1,27 @@
+- name: Common bootstrap — all nodes
+  hosts: all
+  gather_facts: true
+  roles:
+    - common
+
+- name: Edge node setup
+  hosts: edge
+  roles:
+    - k3s
+    - traefik
+    - postgres
+    - go-api
+
+- name: Worker node setup
+  hosts: worker
+  roles:
+    - k3s
+    - runtime-agent
+
+- name: Infra node setup
+  hosts: infra
+  roles:
+    - gitea
+    - docker-registry
+    - victoriametrics
+    - uptime-kuma

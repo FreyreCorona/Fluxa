@@ -1,0 +1,22 @@
+- name: Create registry directories
+  ansible.builtin.file:
+    path: "{{ platform_dir }}/registry/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - data
+    - auth
+
+- name: Deploy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ platform_dir }}/registry/docker-compose.yml"
+    mode: "0644"
+
+- name: Start Docker Registry
+  ansible.builtin.shell: |
+    docker compose up -d
+  args:
+    chdir: "{{ platform_dir }}/registry"
+  register: registry_start
+  changed_when: "'Started' in registry_start.stdout or 'Creating' in registry_start.stdout or 'Starting' in registry_start.stdout"

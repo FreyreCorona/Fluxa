@@ -1,0 +1,189 @@
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    upgrade: dist
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ base_packages }}"
+    state: present
+
+- name: Create base platform directories
+  ansible.builtin.file:
+    path: "{{ platform_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ platform_user }}"
+    group: "{{ platform_user }}"
+    mode: "0755"
+  loop:
+    - services
+    - data
+    - logs
+
+- name: Create role-specific platform directories
+  ansible.builtin.file:
+    path: "{{ platform_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ platform_user }}"
+    group: "{{ platform_user }}"
+    mode: "0755"
+  loop: "{{ platform_dirs }}"
+
+- name: Configure UFW — default deny incoming
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: Configure UFW — default allow outgoing
+  community.general.ufw:
+    default: allow
+    direction: outgoing
+
+- name: Configure UFW — allow ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.split('/')[0] }}"
+    proto: "{{ item.split('/')[1] }}"
+  loop: "{{ firewall_ports }}"
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+
+- name: Create apt keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Get dpkg architecture
+  ansible.builtin.shell: dpkg --print-architecture
+  register: dpkg_arch
+  changed_when: false
+
+- name: Add Docker GPG key
+  ansible.builtin.apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    keyring: /etc/apt/keyrings/docker.gpg
+
+- name: Add Docker repository
+  ansible.builtin.apt_repository:
+    repo: "deb [arch={{ dpkg_arch.stdout }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    update_cache: true
+
+- name: Install Docker packages
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+
+- name: Add platform user to docker group
+  ansible.builtin.user:
+    name: "{{ platform_user }}"
+    groups: docker
+    append: true
+
+- name: Create Docker daemon directory
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    mode: "0755"
+
+- name: Configure Docker daemon.json
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        },
+        "live-restore": true
+      }
+    mode: "0644"
+  register: docker_config
+
+- name: Restart Docker if config changed
+  ansible.builtin.systemd:
+    name: docker
+    state: restarted
+    daemon_reload: true
+  when: docker_config.changed
+
+- name: Enable Docker service
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Install Tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+
+- name: Enable IP forwarding for Tailscale
+  ansible.builtin.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+
+- name: Connect to Tailscale
+  ansible.builtin.shell: |
+    tailscale up --authkey {{ tailscale_auth_key }}
+  when: tailscale_auth_key is defined and tailscale_auth_key | length > 0
+  register: tailscale_up
+  changed_when: "'Success' in tailscale_up.stdout"
+
+- name: Warn about Tailscale auth
+  ansible.builtin.debug:
+    msg: "Tailscale auth key not provided. Run 'tailscale up' manually on this node."
+  when: tailscale_auth_key is not defined or tailscale_auth_key | length == 0
+
+- name: Check if tailscale interface exists
+  ansible.builtin.stat:
+    path: /sys/class/net/tailscale0
+  register: tailscale_iface
+
+- name: Allow UFW traffic on Tailscale interface
+  ansible.builtin.shell: |
+    ufw allow in on tailscale0
+  when: tailscale_iface.stat.exists
+  changed_when: false
+
+- name: Install fail2ban
+  ansible.builtin.apt:
+    name: fail2ban
+    state: present
+
+- name: Enable fail2ban service
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started
+
+- name: Harden SSH — disable password auth
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PasswordAuthentication"
+    line: "PasswordAuthentication no"
+    backup: true
+  notify: restart ssh
+
+- name: Harden SSH — disable root login
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "^#?PermitRootLogin"
+    line: "PermitRootLogin prohibit-password"
+  notify: restart ssh

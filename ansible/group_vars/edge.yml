@@ -1,0 +1,15 @@
+k3s_role: server
+
+# IP interna (Tailscale) del nodo edge para que los workers se conecten al k3s server
+k3s_server_ip: 100.127.57.43
+
+postgres_password: !FluxaPQ
+
+firewall_ports:
+  - 22/tcp
+  - 80/tcp
+  - 443/tcp
+
+platform_dirs:
+  - traefik
+  - postgres

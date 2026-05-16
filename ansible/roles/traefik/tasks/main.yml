@@ -1,0 +1,28 @@
+- name: Create Traefik directories
+  ansible.builtin.file:
+    path: "{{ platform_dir }}/traefik/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - config
+    - certs
+
+- name: Deploy Traefik static config
+  ansible.builtin.template:
+    src: traefik.yml.j2
+    dest: "{{ platform_dir }}/traefik/config/traefik.yml"
+    mode: "0644"
+
+- name: Deploy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ platform_dir }}/traefik/docker-compose.yml"
+    mode: "0644"
+
+- name: Start Traefik
+  ansible.builtin.shell: |
+    docker compose up -d
+  args:
+    chdir: "{{ platform_dir }}/traefik"
+  register: traefik_start
+  changed_when: "'Started' in traefik_start.stdout or 'Creating' in traefik_start.stdout or 'Starting' in traefik_start.stdout"

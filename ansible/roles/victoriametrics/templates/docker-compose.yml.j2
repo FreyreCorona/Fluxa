@@ -1,0 +1,23 @@
+services:
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.115.0
+    container_name: victoria-metrics
+    restart: unless-stopped
+    volumes:
+      - ./victoria-metrics-data:/victoria-metrics-data
+    ports:
+      - "8428:8428"
+    command:
+      - "-storageDataPath=/victoria-metrics-data"
+      - "-httpListenAddr=:8428"
+
+  prometheus:
+    image: prom/prometheus:v3.2.0
+    container_name: platform-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--storage.tsdb.path=/prometheus"

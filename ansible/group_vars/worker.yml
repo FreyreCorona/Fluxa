@@ -1,0 +1,6 @@
+k3s_role: agent
+
+firewall_ports:
+  - 22/tcp
+
+platform_dirs: []

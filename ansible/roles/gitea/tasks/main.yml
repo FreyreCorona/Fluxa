@@ -1,0 +1,23 @@
+- name: Create Gitea directories
+  ansible.builtin.file:
+    path: "{{ platform_dir }}/gitea/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - data
+    - config
+    - ssh
+
+- name: Deploy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ platform_dir }}/gitea/docker-compose.yml"
+    mode: "0644"
+
+- name: Start Gitea
+  ansible.builtin.shell: |
+    docker compose up -d
+  args:
+    chdir: "{{ platform_dir }}/gitea"
+  register: gitea_start
+  changed_when: "'Started' in gitea_start.stdout or 'Creating' in gitea_start.stdout or 'Starting' in gitea_start.stdout"

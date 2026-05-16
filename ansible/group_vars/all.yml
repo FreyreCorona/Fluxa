@@ -1,0 +1,18 @@
+# Dejar vacío si se prefiere autenticar Tailscale manualmente
+tailscale_auth_key: ""
+
+platform_dir: /opt/platform
+platform_user: ubuntu
+docker_compose_version: 2.32.4
+
+base_packages:
+  - curl
+  - wget
+  - git
+  - jq
+  - htop
+  - unzip
+  - ca-certificates
+  - gnupg
+  - lsb-release
+  - ufw
