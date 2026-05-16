@@ -1,11 +1,13 @@
 - name: Common bootstrap — all nodes
   hosts: all
   gather_facts: true
+  become: yes
   roles:
     - common
 
 - name: Edge node setup
   hosts: edge
+  become: yes
   roles:
     - k3s
     - traefik
@@ -14,12 +16,14 @@
 
 - name: Worker node setup
   hosts: worker
+  become: yes
   roles:
     - k3s
     - runtime-agent
 
 - name: Infra node setup
   hosts: infra
+  become: yes
   roles:
     - gitea
     - docker-registry
