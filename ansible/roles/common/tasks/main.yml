@@ -1,7 +1,12 @@
-- name: Disable automatic apt updates
+- name: Disable automatic apt updates and release locks
   ansible.builtin.shell: |
     systemctl stop unattended-upgrades 2>/dev/null || true
     systemctl disable unattended-upgrades 2>/dev/null || true
+    killall apt apt-get dpkg 2>/dev/null || true
+    rm -f /var/lib/apt/lists/lock
+    rm -f /var/lib/dpkg/lock-frontend
+    rm -f /var/lib/dpkg/lock
+    dpkg --configure -a 2>/dev/null || true
   changed_when: false
 
 - name: Update apt cache
