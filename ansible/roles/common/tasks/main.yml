@@ -1,18 +1,30 @@
-- name: Disable automatic apt and update cache
+- name: Kill lingering apt processes
+  ansible.builtin.shell: killall -9 apt apt-get dpkg 2>/dev/null || true
+  changed_when: false
+  failed_when: false
+
+- name: Remove apt lock files
   ansible.builtin.shell: |
-    set -e
+    rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
+    dpkg --configure -a
+  changed_when: false
+  failed_when: false
+
+- name: Disable automatic apt services
+  ansible.builtin.shell: |
     systemctl disable --now unattended-upgrades 2>/dev/null || true
     systemctl mask unattended-upgrades 2>/dev/null || true
     systemctl disable --now apt-daily.timer 2>/dev/null || true
     systemctl disable --now apt-daily-upgrade.timer 2>/dev/null || true
-    killall -9 apt apt-get dpkg 2>/dev/null || true
-    rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock
-    dpkg --configure -a 2>/dev/null || true
+  changed_when: false
+
+- name: Update apt cache
+  ansible.builtin.shell: |
     apt-get -o DPkg::Lock::Timeout=120 update
   changed_when: false
   register: apt_update
-  retries: 3
-  delay: 5
+  retries: 5
+  delay: 10
   until: apt_update is succeeded
 
 - name: Upgrade all packages
