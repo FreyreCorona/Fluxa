@@ -10,7 +10,6 @@
   changed_when: false
 
 - name: Update apt cache
-  become: yes
   ansible.builtin.shell: apt-get update
   changed_when: false
   register: apt_update
@@ -19,13 +18,11 @@
   until: apt_update is succeeded
 
 - name: Upgrade all packages
-  become: yes
   ansible.builtin.apt:
     upgrade: dist
     lock_timeout: 120
 
 - name: Install base packages
-  become: yes
   ansible.builtin.apt:
     name: "{{ base_packages }}"
     state: present
@@ -96,7 +93,6 @@
     update_cache: true
 
 - name: Install Docker packages
-  become: yes
   ansible.builtin.apt:
     name:
       - docker-ce
@@ -148,7 +144,6 @@
     state: started
 
 - name: Install Tailscale
-  become: yes
   ansible.builtin.apt:
     name: tailscale
     state: present
@@ -186,7 +181,6 @@
   changed_when: false
 
 - name: Install fail2ban
-  become: yes
   ansible.builtin.apt:
     name: fail2ban
     state: present
