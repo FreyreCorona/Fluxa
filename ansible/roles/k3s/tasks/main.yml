@@ -2,7 +2,8 @@
   ansible.builtin.shell: |
     curl -sfL https://get.k3s.io | sh -s - server \
       --disable traefik \
-      --write-kubeconfig-mode 644
+      --write-kubeconfig-mode 644 \
+      --advertise-address {{ ansible_facts.default_ipv4.address }}
   args:
     creates: /usr/local/bin/k3s
   when: k3s_role == 'server'
@@ -18,9 +19,41 @@
     k3s_token: "{{ k3s_token_raw.content | b64decode | trim | split(':') | last }}"
   when: k3s_role == 'server'
 
+- name: Resolve k3s server IP from edge hostvars (dynamic)
+  ansible.builtin.set_fact:
+    k3s_server_ip_resolved: "{{ hostvars[groups['edge'][0]]['ansible_facts']['default_ipv4']['address'] }}"
+  when:
+    - k3s_role == 'agent'
+    - groups['edge'] | default([]) | length > 0
+    - hostvars[groups['edge'][0]]['ansible_facts'] is defined
+  failed_when: false
+
+- name: Fallback to static k3s_server_ip (standalone run)
+  ansible.builtin.set_fact:
+    k3s_server_ip_resolved: "{{ k3s_server_ip }}"
+  when:
+    - k3s_role == 'agent'
+    - k3s_server_ip_resolved is not defined
+
+- name: Resolve k3s token from edge hostvars (when running together)
+  ansible.builtin.set_fact:
+    k3s_token_resolved: "{{ hostvars[groups['edge'][0]]['k3s_token'] }}"
+  when:
+    - k3s_role == 'agent'
+    - groups['edge'] | default([]) | length > 0
+    - hostvars[groups['edge'][0]]['k3s_token'] is defined
+  failed_when: false
+
+- name: Fallback to vault k3s token (standalone worker run)
+  ansible.builtin.set_fact:
+    k3s_token_resolved: "{{ k3s_token }}"
+  when:
+    - k3s_role == 'agent'
+    - k3s_token_resolved is not defined
+
 - name: Install k3s agent
   ansible.builtin.shell: |
-    curl -sfL https://get.k3s.io | K3S_URL=https://{{ k3s_server_ip }}:6443 K3S_TOKEN={{ k3s_token }} sh -
+    curl -sfL https://get.k3s.io | K3S_URL=https://{{ k3s_server_ip_resolved }}:6443 K3S_TOKEN={{ k3s_token_resolved }} sh -
   args:
     creates: /usr/local/bin/k3s
   when: k3s_role == 'agent'
