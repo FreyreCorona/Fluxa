@@ -1,11 +1,12 @@
 # Platform Architecture
 
 Estado actual:
-- single control plane
+- single edge node
+- single control/infra node
 - single worker
-- internal infra node
 - k3s-based runtime
 - tailscale mesh networking
+- GitHub-based CI/CD flow
 
 Objetivo:
 Construir un PaaS pequeño, modular y portable,
@@ -19,22 +20,22 @@ manteniendo separación clara entre:
 
 # Filosofía de Diseño
 
-La plataforma NO está acoplada a Kubernetes.
+La plataforma NO expone Kubernetes directamente al cliente.
 
-Kubernetes/k3s es solamente el runtime substrate actual.
+Kubernetes/k3s es el runtime substrate actual.
 
-La plataforma debe mantener:
-- control plane propio
-- API propia
-- scheduler lógico propio
-- metadata propia
-- abstractions propias
+La plataforma abstrae:
+- deployments
+- domains
+- ingress
+- lifecycle
+- observabilidad básica
 
-Esto permite:
-- migrar a Kubernetes completo después
-- soportar Docker standalone
-- soportar otros runtimes
-- evitar convertirse en un wrapper de kubectl
+El objetivo es ofrecer:
+- deploy simplificado
+- integración con GitHub
+- aislamiento entre tenants
+- runtime reproducible
 
 ---
 
@@ -48,39 +49,41 @@ Esto permite:
                     |   Edge Node    |
                     | VPS Oracle #1  |
                     +----------------+
-                     |     |      |
-                     |     |      |
-                     |     |      +-------------------+
-                     |                             |
-                     v                             v
-               Control Plane                PostgreSQL
-                     |
-                     |
-                     v
-              k3s API / Runtime
-                     |
-          +----------+----------+
-          |                     |
-          v                     v
-   Worker Node(s)        Future Worker Nodes
-      VPS #2
+                            |
+                            |
+                            v
 
-                     ^
-                     |
-                     |
-              Tailscale Mesh
-                     |
-                     v
+                 +----------------------+
+                 | Control / Infra Node |
+                 |  Atom Ubuntu Server  |
+                 +----------------------+
+                    |       |        |
+                    |       |        |
+                    |       |        +------------------+
+                    |       |                           |
+                    |       v                           v
+                    |   PostgreSQL               Observability
+                    |
+                    v
 
-            +-------------------+
-            | Internal Infra    |
-            | Atom Ubuntu Node  |
-            +-------------------+
+                 k3s Control Plane
+                    |
+         +----------+----------+
+         |                     |
+         v                     v
+
+    Worker Node(s)      Future Worker Nodes
+      Oracle VPS #2
+
+                    ^
+                    |
+                    |
+             Tailscale Mesh
 ```
 
 ---
 
-# Layer 1 — Edge + Control Plane
+# Layer 1 — Edge Layer
 
 Nodo:
 - Oracle VPS #1
@@ -88,234 +91,201 @@ Nodo:
 Responsabilidades:
 - entrypoint HTTP/HTTPS
 - TLS termination
+- reverse proxy
 - routing
-- API pública
-- auth
-- domains
-- orchestration metadata
-- deployments
-- scheduler lógico
-- state management
+- protección básica
+- forwarding hacia workloads internos
 
 Servicios:
-- k3s server
 - Traefik
-- PostgreSQL
-- Go Control API
-- scheduler service
-- ACME / Let's Encrypt
-- rate limiting
-
----
-
-## Decisiones de Diseño
-
-### Traefik sobre Caddy
-
-Traefik fue elegido porque:
-- integra naturalmente con k3s
-- soporta dynamic service discovery
-- facilita ingress management
-- escala mejor hacia Kubernetes completo
-
-Aunque Caddy posee mejor ergonomía HTTP,
-Traefik se alinea mejor con:
-- orchestrators
-- ingress patterns
-- cloud-native routing
-
----
-
-### PostgreSQL Local Temporalmente
-
-PostgreSQL permanece en el Edge Node inicialmente.
-
-Razones:
-- menor complejidad operacional
-- menos moving parts
-- menor latencia interna
-- infraestructura pequeña actualmente
-- no existe necesidad real de HA
-
-Migración futura:
-- PostgreSQL separado
-- backups remotos
-- replication
-- managed database opcional
-
----
-
-### Control Plane Propio
-
-Aunque se utiliza k3s:
-- Kubernetes NO es el producto
-- Kubernetes es solamente el runtime
-
-La plataforma mantiene:
-- auth propia
-- deployments propios
-- projects
-- environments
-- metadata
-- API estable
-
-Esto evita:
-- acoplamiento excesivo
-- dependencia total de Kubernetes APIs
-- problemas futuros de migración
-
----
-
-# Layer 2 — Runtime Layer
-
-Nodo:
-- Oracle VPS #2
-
-Responsabilidades:
-- ejecutar workloads clientes
-- aislamiento runtime
-- lifecycle management
-- healthchecks
-- logs
-- metrics básicas
-
-Servicios:
-- k3s agent
-- container runtime
-- runtime agent (Go)
-- log forwarding
+- fail2ban
 - metrics exporter
 
 ---
 
 ## Decisiones de Diseño
 
-### k3s por simplicidad operacional
+### Edge Stateless
 
-k3s fue elegido porque:
-- reduce complejidad
-- elimina necesidad de construir scheduler
-- simplifica networking
-- simplifica orchestration
-- simplifica service discovery
+El Edge Node:
+- no almacena estado crítico
+- no contiene bases de datos
+- no ejecuta workloads clientes
+- no contiene control plane Kubernetes
 
 Esto permite:
-- enfocarse en el producto
-- enfocarse en UX
-- enfocarse en deploy pipeline
-
-En lugar de:
-- reconstruir Kubernetes parcialmente
+- reemplazo rápido
+- menor blast radius
+- menor complejidad operacional
 
 ---
 
-### Runtime Agent Propio
+### Traefik como ingress layer
 
-Aunque k3s ya maneja workloads,
-se mantiene un runtime agent propio.
-
-Responsabilidades:
-- reporting
-- observabilidad
-- integración con control plane
-- metadata local
-- logs
-- node health
-
-Esto desacopla la plataforma del runtime real.
+Traefik fue elegido porque:
+- integra naturalmente con k3s
+- soporta dynamic service discovery
+- facilita ingress management
+- simplifica TLS automático
+- se alinea con patrones cloud-native
 
 ---
 
-# Layer 3 — Internal Infrastructure
+# Layer 2 — Control Plane + Internal Infrastructure
 
 Nodo:
 - Atom Ubuntu Server
 
 Responsabilidades:
-- CI/CD
-- builds
-- registry
-- monitoring
-- backups
-- testing
-- laboratorio interno
+- administración del cluster
+- API central del PaaS
+- orchestration de deployments
+- metadata de plataforma
+- integración con GitHub
+- observabilidad
+- servicios internos
 
 Servicios:
-- Gitea
-- CI runners
-- Docker registry
+- k3s server
+- PostgreSQL
+- Go Control API
 - VictoriaMetrics
-- Uptime Kuma
-- build cache
-- artifact storage
+- Grafana
+- UptimeKuma
 
 ---
 
 ## Decisiones de Diseño
 
-### Infraestructura interna separada
+### Kubernetes como runtime substrate
 
-La infraestructura interna NO comparte runtime con workloads clientes.
+k3s fue elegido porque:
+- reduce complejidad operacional
+- simplifica orchestration
+- simplifica networking
+- simplifica service discovery
+- simplifica lifecycle management
+
+La plataforma NO reemplaza Kubernetes.
+
+Kubernetes:
+- schedulea workloads
+- maneja networking interno
+- realiza reconciliation
+- maneja restart policies
+- maneja deployments
+
+La plataforma abstrae:
+- UX
+- deployment workflow
+- tenant management
+- ingress
+- domains
+- metadata
+
+---
+
+### Go API como control layer
+
+La Go API NO es un scheduler distribuido complejo.
+
+Responsabilidades:
+- deployments
+- integración GitHub
+- integración CI/CD
+- metadata
+- tenant management
+- domains
+- lifecycle de aplicaciones
+
+La API traduce requests de plataforma hacia:
+- Deployments
+- Services
+- Ingresses
+- Secrets
+- Namespaces
+
+de Kubernetes.
+
+---
+
+### PostgreSQL centralizado inicialmente
+
+PostgreSQL permanece en el Control Node inicialmente.
 
 Razones:
+- menor complejidad operacional
+- pocos recursos disponibles
+- menor cantidad de moving parts
+- no existe necesidad real de HA
+
+Migración futura:
+- PostgreSQL separado
+- replication
+- backups remotos
+- HA parcial
+
+---
+
+### Observabilidad separada del runtime
+
+La observabilidad vive fuera de los workers.
+
+Ventajas:
+- debugging más simple
+- workloads clientes aislados
+- métricas persistentes
+- menor impacto operacional
+
+---
+
+# Layer 3 — Runtime Layer
+
+Nodo:
+- Oracle VPS #2
+
+Responsabilidades:
+- ejecutar workloads clientes
+- ejecutar workloads internos
+- runtime isolation
+- healthchecks
+- logs
+- métricas básicas
+
+Servicios:
+- k3s agent
+- runtime agent
+- metrics exporter
+
+---
+
+## Decisiones de Diseño
+
+### Workers especializados
+
+Los workers:
+- no contienen servicios críticos
+- no contienen bases de datos principales
+- no contienen control plane
+- no exponen servicios públicamente
+
+Esto permite:
+- scaling horizontal
 - aislamiento
-- estabilidad
-- builds no afectan producción
-- backups aislados
-- menor superficie de ataque
+- menor riesgo operacional
 
 ---
 
-### Nodo no expuesto públicamente
+### Runtime Agent ligero
 
-El nodo infra:
-- vive únicamente dentro de Tailscale
-- no expone servicios directamente
-- reduce riesgo operacional
+El runtime agent existe para:
+- reporting
+- métricas
+- observabilidad
+- health status
+- metadata local
 
----
-
-# Layer 4 — Runtime Abstraction
-
-El diseño completo depende de esta capa.
-
-La plataforma NO habla directamente con:
-- Docker
-- Kubernetes
-- containerd
-
-La plataforma habla con una interfaz abstracta.
-
-Ejemplo conceptual:
-
-```go
-type Runtime interface {
-    Deploy(ctx context.Context, app App) error
-    Stop(ctx context.Context, appID string) error
-    Restart(ctx context.Context, appID string) error
-    Logs(ctx context.Context, appID string) error
-    Metrics(ctx context.Context, appID string) error
-}
-```
-
-Implementaciones futuras:
-- KubernetesRuntime
-- DockerRuntime
-- NomadRuntime
-- FirecrackerRuntime
-
----
-
-## Razones de esta abstracción
-
-Permite:
-- migraciones futuras
-- testing local
-- multi-runtime
-- desacoplamiento
-- evolución gradual
-
-La API pública nunca depende del runtime específico.
+NO reemplaza Kubernetes.
 
 ---
 
@@ -324,12 +294,12 @@ La API pública nunca depende del runtime específico.
 Toda la infraestructura pertenece a una misma red Tailscale.
 
 Ventajas:
-- overlay networking simplificado
 - private networking automático
 - WireGuard integrado
+- overlay networking simplificado
 - node discovery
-- menos configuración manual
-- seguridad simplificada
+- menor exposición pública
+- configuración simplificada
 
 ---
 
@@ -338,43 +308,93 @@ Ventajas:
 ```text
 git push
     ↓
-CI/CD pipeline
+GitHub Actions
     ↓
 build image
     ↓
-push registry
+push GHCR
     ↓
-control plane deployment request
+deployment request
     ↓
-scheduler selecciona nodo
+Go API
     ↓
-k3s deploy
+Kubernetes Deployment update
     ↓
-Traefik actualiza routes
+k3s scheduling
     ↓
-SSL automático
+Traefik ingress update
+    ↓
+TLS automático
     ↓
 application online
 ```
 
 ---
 
+# Deployment Model
+
+El contrato principal de la plataforma es:
+
+```text
+Dockerfile válido = deployment soportado
+```
+
+El cliente:
+- mantiene código fuente
+- mantiene pipeline CI/CD
+- construye imágenes OCI
+- publica imágenes
+
+La plataforma:
+- ejecuta workloads
+- administra ingress
+- administra TLS
+- administra domains
+- administra runtime
+- administra observabilidad básica
+
+---
+
+# GitHub-Centric Workflow
+
+La plataforma externaliza:
+- Git hosting
+- CI/CD
+- container registry
+- documentación estática
+
+Servicios utilizados:
+- GitHub
+- GitHub Actions
+- GitHub Container Registry
+- GitHub Pages
+
+Razones:
+- menor consumo de recursos
+- menor complejidad operacional
+- menor mantenimiento
+- enfoque en el core del PaaS
+
+---
+
 # Scheduler Philosophy
 
-El scheduler inicial será simple.
+Inicialmente NO existe scheduler complejo propio.
 
-Factores:
-- RAM disponible
-- CPU disponible
-- cantidad de workloads
-- estado del nodo
+Kubernetes realiza:
+- placement
+- balancing
+- lifecycle
+- reconciliation
 
-NO se intentará:
-- scheduling complejo
-- autoscaling avanzado
-- binpacking extremo
+La plataforma solamente puede aplicar:
+- node selection
+- affinity
+- quotas
+- limits
+- metadata lógica
 
-La complejidad operacional debe mantenerse baja inicialmente.
+La complejidad operacional debe mantenerse baja.
 
 ---
 
@@ -382,15 +402,16 @@ La complejidad operacional debe mantenerse baja inicialmente.
 
 Actual:
 - single edge node
+- single control/infra node
 - single worker node
-- single infra node
 - single PostgreSQL
-- k3s lightweight cluster
+- lightweight k3s cluster
 
 Objetivo actual:
 - estabilidad
 - reproducibilidad
 - velocidad de iteración
+- bajo costo operacional
 
 ---
 
@@ -398,33 +419,37 @@ Objetivo actual:
 
 ## Fase 1
 - estabilizar plataforma
-- deploy pipeline
-- observabilidad básica
 - auth
+- deployment API
 - domains
+- observabilidad básica
 
 ## Fase 2
 - múltiples workers
-- Redis
 - logs centralizados
 - object storage
 - backups automáticos
+- tenant isolation mejorado
 
 ## Fase 3
 - PostgreSQL separado
 - HA parcial
 - autoscaling
 - multi-region
+- edge redundancy
 
 ---
 
 # Principios Arquitectónicos
 
+- Kubernetes como runtime, no como producto
 - control plane separado del runtime
+- edge stateless
 - infraestructura interna aislada
 - simplicidad operacional primero
-- abstractions antes que acoplamiento
-- runtime portable
+- abstractions antes que complejidad
 - stateless-first
 - observabilidad desde el inicio
 - automatización reproducible
+- evolución gradual
+- foco en deployment UX
