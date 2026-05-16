@@ -2,12 +2,14 @@
   hosts: all
   gather_facts: true
   become: yes
+  tags: [common]
   roles:
     - common
 
 - name: Edge node setup
   hosts: edge
   become: yes
+  tags: [edge]
   roles:
     - k3s
     - traefik
@@ -17,6 +19,7 @@
 - name: Worker node setup
   hosts: worker
   become: yes
+  tags: [worker]
   roles:
     - k3s
     - runtime-agent
@@ -24,6 +27,7 @@
 - name: Infra node setup
   hosts: infra
   become: yes
+  tags: [infra]
   roles:
     - gitea
     - docker-registry

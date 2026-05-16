@@ -5,6 +5,8 @@ k3s_server_ip: 100.127.57.43
 
 postgres_password: "{{ vault_postgres_password }}"
 
+traefik_acme_email: admin@fluxa.dev
+
 firewall_ports:
   - 22/tcp
   - 80/tcp

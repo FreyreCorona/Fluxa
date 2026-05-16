@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3
     container_name: traefik
     restart: unless-stopped
     ports:
@@ -10,6 +10,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./config:/config
       - ./certs:/certs
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     networks:
       - traefik
 

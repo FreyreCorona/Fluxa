@@ -1,32 +1,55 @@
 - name: Disable automatic apt services
   ansible.builtin.shell: |
-    timeout 10 systemctl stop unattended-upgrades 2>/dev/null || true
-    systemctl mask unattended-upgrades 2>/dev/null || true
-    systemctl disable unattended-upgrades 2>/dev/null || true
-    systemctl stop apt-daily.timer 2>/dev/null || true
-    systemctl disable apt-daily.timer 2>/dev/null || true
-    systemctl stop apt-daily-upgrade.timer 2>/dev/null || true
-    systemctl disable apt-daily-upgrade.timer 2>/dev/null || true
+    timeout 15 systemctl stop unattended-upgrades 2>/dev/null || true
+    timeout 15 systemctl mask unattended-upgrades 2>/dev/null || true
+    timeout 15 systemctl disable unattended-upgrades 2>/dev/null || true
+    timeout 15 systemctl stop apt-daily.timer 2>/dev/null || true
+    timeout 15 systemctl disable apt-daily.timer 2>/dev/null || true
+    timeout 15 systemctl stop apt-daily-upgrade.timer 2>/dev/null || true
+    timeout 15 systemctl disable apt-daily-upgrade.timer 2>/dev/null || true
   changed_when: false
 
+- name: Kill any lingering apt processes
+  ansible.builtin.shell: killall -9 apt-get apt dpkg 2>/dev/null || true
+  changed_when: false
+
+- name: Remove stale apt locks
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /var/lib/apt/lists/lock
+    - /var/lib/dpkg/lock-frontend
+    - /var/lib/dpkg/lock
+    - /var/cache/apt/archives/lock
+  failed_when: false
+
 - name: Update apt cache
-  ansible.builtin.shell: apt-get update
+  ansible.builtin.shell: timeout 120 apt-get update
   changed_when: false
   register: apt_update
   retries: 3
-  delay: 5
+  delay: 10
   until: apt_update is succeeded
-
-- name: Upgrade all packages
-  ansible.builtin.apt:
-    upgrade: dist
-    lock_timeout: 120
 
 - name: Install base packages
   ansible.builtin.apt:
     name: "{{ base_packages }}"
     state: present
     lock_timeout: 120
+
+- name: Create swap file
+  ansible.builtin.shell: |
+    if ! swapon --show | grep -q '^/swapfile'; then
+      fallocate -l 1G /swapfile
+      chmod 600 /swapfile
+      mkswap /swapfile
+      swapon /swapfile
+      echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
 
 - name: Create base platform directories
   ansible.builtin.file:

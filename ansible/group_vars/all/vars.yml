@@ -2,7 +2,6 @@ tailscale_auth_key: "{{ vault_tailscale_auth_key }}"
 
 platform_dir: /opt/platform
 platform_user: ubuntu
-docker_compose_version: 2.32.4
 
 base_packages:
   - curl

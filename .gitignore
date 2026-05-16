@@ -7,3 +7,4 @@ ansible/**/__pycache__/
 *.retry
 
 .vault_pass
+/terraform/.terraform
