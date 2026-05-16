@@ -1,19 +1,27 @@
-- name: Disable automatic apt updates and release locks
+- name: Disable all automatic apt services and release locks
   ansible.builtin.shell: |
-    systemctl stop unattended-upgrades 2>/dev/null || true
-    systemctl disable unattended-upgrades 2>/dev/null || true
-    killall apt apt-get dpkg 2>/dev/null || true
+    systemctl disable --now unattended-upgrades 2>/dev/null || true
+    systemctl mask unattended-upgrades 2>/dev/null || true
+    systemctl disable --now apt-daily.timer 2>/dev/null || true
+    systemctl disable --now apt-daily-upgrade.timer 2>/dev/null || true
+    killall -9 apt apt-get dpkg 2>/dev/null || true
     rm -f /var/lib/apt/lists/lock
     rm -f /var/lib/dpkg/lock-frontend
     rm -f /var/lib/dpkg/lock
+    rm -f /var/cache/apt/archives/lock
     dpkg --configure -a 2>/dev/null || true
   changed_when: false
 
 - name: Update apt cache
-  ansible.builtin.apt:
-    update_cache: true
-    cache_valid_time: 3600
-    lock_timeout: 120
+  ansible.builtin.shell: |
+    apt-get update
+  args:
+    warn: false
+  changed_when: false
+  register: apt_update
+  retries: 5
+  delay: 10
+  until: apt_update is succeeded
 
 - name: Upgrade all packages
   ansible.builtin.apt:
