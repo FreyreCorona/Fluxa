@@ -1,38 +1,66 @@
 # Fluxa — Modular PaaS
 
-3-node platform: **edge-01** (Oracle VPS), **worker-01** (Oracle VPS), **infra-01** (physical home PC).
-All nodes connected via Tailscale mesh.
+3-node platform: **edge-01** (Oracle VPS), **control-01/infra-01** (physical home PC), **worker-01** (Oracle VPS).
+All nodes connected via Tailscale mesh. Edge is **stateless** — no databases, no control plane.
 
 ---
 
 ## Architecture
 
 ```
-                  Internet
-                     │
-              ┌──────┴──────┐
-              │   edge-01   │  Oracle VPS (free tier)
-              │  k3s server │  IP: 147.15.42.234
-              │  Traefik    │  Tailscale: 100.127.57.43
-              │  Postgres   │
-              └──────┬──────┘
-                     │ Tailscale
-         ┌───────────┼───────────┐
-         │           │           │
-  ┌──────┴──────┐    │    ┌─────┴─────┐
-  │  worker-01  │    │    │  infra-01 │  Physical PC at home
-  │ k3s agent   │    │    │  Gitea    │  Tailscale: 100.69.246.61
-  │ Runtime-agt │    │    │  Registry │
-  └─────────────┘    │    │  VM/Prom  │
-                     │    │  Uptime   │
-                     │    │  Vaultwrdn│
-                     │    └───────────┘
-              ┌──────┴──────┐
-              │   devbox    │  This machine
-              │   Ansible   │  Tailscale: 100.102.73.3
-              │   Terraform │
-              └─────────────┘
+                     Internet
+                        |
+                        v
+                +----------------+
+                |   edge-01      |  ← stateless, public-facing
+                |  Traefik       |  Oracle VPS (free tier)
+                |  fail2ban      |
+                +----------------+
+                        |
+                        | Tailscale
+                        v
+          +-----------------------------+
+          |     control-01 / infra-01   |  ← k3s server, DB, API
+          |  k3s server, PostgreSQL     |  Physical PC at home
+          |  Go API, VictoriaMetrics    |
+          |  Grafana, UptimeKuma        |
+          +-----------------------------+
+                     |           |
+                     |           +---- Observability
+                     |
+                     v
+          +-----------------------------+
+          |       worker-01             |  ← workloads only
+          |  k3s agent, runtime agent   |  Oracle VPS #2
+          |  metrics exporter           |
+          +-----------------------------+
 ```
+
+---
+
+## Deployment Flow
+
+```text
+git push
+    ↓
+GitHub Actions
+    ↓
+build image → push GHCR
+    ↓
+deployment request → Go API
+    ↓
+Kubernetes Deployment update
+    ↓
+k3s scheduling → worker-01
+    ↓
+Traefik ingress update
+    ↓
+TLS automático
+    ↓
+application online
+```
+
+GitHub-centric: Git hosting, CI/CD, and container registry are externalized (GitHub, GHCR).
 
 ---
 
@@ -41,7 +69,7 @@ All nodes connected via Tailscale mesh.
 ```
 fluxa/
 ├── ansible/                  # Configuration management
-│   ├── playbooks/site.yml    # Main playbook (tags: common,edge,worker,infra)
+│   ├── playbooks/site.yml    # Main playbook (tags: common,edge,control,worker)
 │   ├── inventory.yml         # Node definitions
 │   ├── group_vars/           # Per-group variables
 │   │   └── all/
@@ -51,14 +79,13 @@ fluxa/
 │       ├── common/           # Bootstrap all nodes
 │       ├── k3s/              # k3s server/agent install
 │       ├── traefik/          # Reverse proxy (edge)
-│       ├── postgres/         # PostgreSQL 17 (edge)
-│       ├── go-api/           # 🚧 Placeholder
-│       ├── runtime-agent/    # 🚧 Placeholder
-│       ├── gitea/            # Git server (infra) — port 3000
-│       ├── docker-registry/  # Container registry (infra) — port 5000
-│       ├── victoriametrics/  # Metrics + Prometheus (infra) — ports 8428,9090
-│       ├── uptime-kuma/      # Uptime monitor (infra) — port 3001
-│       └── vaultwarden/      # Password vault (infra) — port 8888
+│       ├── postgres/         # PostgreSQL 17 (control)
+│       ├── go-api/           # 🚧 Go control API (control)
+│       ├── runtime-agent/    # 🚧 Runtime agent (worker)
+│       ├── gitea/            # 🚧 Deprecating — migrating to GitHub
+│       ├── docker-registry/  # 🚧 Deprecating — migrating to GHCR
+│       ├── victoriametrics/  # Metrics (control)
+│       ├── uptime-kuma/      # Uptime monitor (control)
 ├── terraform/                # Oracle Cloud provisioning
 │   ├── main.tf               # VCN, subnet, instances, security list
 │   ├── variables.tf          # tenancy_ocid, region, shape...
@@ -88,16 +115,14 @@ ansible-playbook ansible/playbooks/site.yml
 
 ## Playbook Tags
 
-Skip already-bootstrapped nodes:
-
 ```bash
-# Only edge services (skip common)
+# Only edge services (Traefik, fail2ban)
 ansible-playbook site.yml --tags edge --limit edge-01
 
-# Only infra services (skip common)
-ansible-playbook site.yml --tags infra --limit infra-01
+# Only control plane + infra services (k3s server, Postgres, observability)
+ansible-playbook site.yml --tags control --limit infra-01
 
-# Only worker (needs common + k3s)
+# Only worker (needs common + k3s agent)
 ansible-playbook site.yml --tags common,worker --limit worker-01
 ```
 
@@ -105,107 +130,26 @@ ansible-playbook site.yml --tags common,worker --limit worker-01
 
 ## Service URLs
 
-### Infra-01 (via Tailscale)
+### Control-01 / Infra-01 (via Tailscale only — no public exposure)
 
 | Service         | URL                                        |
 |-----------------|--------------------------------------------|
-| Gitea           | http://100.69.246.61:3000                  |
-| Docker Registry | http://100.69.246.61:5000/v2/              |
 | VictoriaMetrics | http://100.69.246.61:8428                  |
 | Prometheus      | http://100.69.246.61:9090                  |
+| Grafana         | http://100.69.246.61:3000                  |
 | Uptime Kuma     | http://100.69.246.61:3001                  |
-| Vaultwarden     | http://100.69.246.61:8888                  |
-| Gitea SSH       | git@100.69.246.61:2222                     |
+| k3s API         | https://100.127.57.43:6443                 |
+| PostgreSQL      | 100.69.246.61:5432                         |
 
-### Edge-01 (public / Tailscale)
+### Edge-01 (public)
 
-⚠️ Edge-01 currently has a networking issue (k3s iptables blocking TLS). See [Networking Fix](#edge-01-networking-fix).
+| Service       | URL                                          |
+|---------------|----------------------------------------------|
+| Traefik HTTP  | http://147.15.42.234:80                      |
+| Traefik HTTPS | https://147.15.42.234:443                    |
+| Traefik Dash  | http://147.15.42.234:8080                    |
 
-| Service       | URL (when working)                          |
-|---------------|---------------------------------------------|
-| Traefik       | http://147.15.42.234:80 / :443              |
-| Traefik Dash  | http://147.15.42.234:8080                   |
-| Postgres      | 147.15.42.234:5432                          |
-| k3s API       | https://100.127.57.43:6443                  |
-
----
-
-## Vaultwarden (Password Vault)
-
-### First Access
-1. Open http://100.69.246.61:8888/admin
-2. Enter admin token (retrieve from ansible-vault):
-   ```bash
-   ansible-vault view ansible/group_vars/all/vault.yml
-   # Look for vaultwarden_admin_token
-   ```
-3. Create admin user → enable signups → create your account → disable signups
-
-### Storing Secrets
-Recommended structure:
-
-```
-📂 Fluxa Infrastructure
- ┣ 📁 Edge
- ┃ ┣ 📄 Tailscale Auth Key
- ┃ ┣ 📄 Postgres Password
- ┃ ┗ 📄 k3s Token
- ┣ 📁 Oracle Cloud
- ┃ ┣ 📄 Tenancy OCID
- ┃ ┣ 📄 User OCID
- ┃ ┗ 📄 API Key Fingerprint
- ┗ 📁 Infra
-   ┣ 📄 Vaultwarden Admin Token
-   ┗ 📄 SSH Keys
-```
-
-### Ansible Integration (future)
-Install `bw` CLI and use it in Ansible:
-
-```bash
-# Login once
-bw login --apikey           # needs API key from Vaultwarden
-bw unlock                   # saves session token
-
-# In Ansible (shell lookup):
-ansible_vaultwarden_token: "{{ lookup('pipe', 'bw get password vaultwarden-admin-token') }}"
-```
-
-### Current Secrets (still in ansible-vault)
-
-```bash
-ansible-vault view ansible/group_vars/all/vault.yml
-# - tailscale_auth_key
-# - postgres_password
-# - k3s_token
-# - vaultwarden_admin_token
-```
-
-To migrate to Vaultwarden: copy each value from ansible-vault → create item in Vaultwarden → update Ansible to use `bw` CLI lookup.
-
----
-
-## Edge-01 Networking Fix
-
-**Symptom**: `apt-get update` and `docker pull` hang with TLS timeouts after k3s server install.
-
-**Root cause**: k3s modifies iptables/nftables which interferes with outbound TLS connections on Oracle Cloud (likely MTU or bridge-nf-call-iptables).
-
-**Fix** (when edge-01 is reachable):
-
-```bash
-# Option A: Disable bridge-nf-call-iptables
-echo 0 | sudo tee /proc/sys/net/bridge/bridge-nf-call-iptables
-
-# Option B: Add iptables rule to accept established outbound
-sudo iptables -I OUTPUT 1 -m state --state ESTABLISHED,RELATED -j ACCEPT
-
-# Option C: Reinstall k3s with non-iptables proxy
-# (in ansible/roles/k3s/tasks/main.yml add to install command:)
-# --kube-proxy-arg "proxy-mode=userspace"
-```
-
-**Quickest recovery**: `terraform destroy && terraform apply` recreates both VPS from scratch.
+> Edge is stateless — no PostgreSQL, no k3s server, no application data.
 
 ---
 
@@ -240,12 +184,12 @@ resource "oci_objectstorage_bucket" "backups" {
 
 ## Node Inventory
 
-| Node      | Provider       | OS        | Role              | Public IP     | Tailscale IP   |
-|-----------|----------------|-----------|-------------------|---------------|----------------|
-| edge-01   | Oracle VPS     | Ubuntu 24 | k3s server + LB   | 147.15.42.234 | 100.127.57.43  |
-| worker-01 | Oracle VPS     | Ubuntu 24 | k3s agent + jobs  | 152.67.41.176 | 100.106.188.96 |
-| infra-01  | Physical (home)| Ubuntu 24 | Services (self)   | —             | 100.69.246.61  |
-| devbox    | —              | Fedora    | Ansible control   | —             | 100.102.73.3   |
+| Node      | Provider       | OS        | Role                          |
+|-----------|----------------|-----------|-------------------------------|
+| edge-01   | Oracle VPS     | Ubuntu 24 | Ingress (stateless)           |
+| worker-01 | Oracle VPS     | Ubuntu 24 | Runtime (k3s agent)           |
+| infra-01  | Physical (home)| Ubuntu 24 | Control plane + infra services|
+| devbox    | —              | Fedora    | Ansible/terraform control     |
 
 ---
 
@@ -258,10 +202,7 @@ ansible all -m ping
 # Re-run vault (add new secret)
 ansible-vault edit ansible/group_vars/all/vault.yml
 
-# Deploy only Vaultwarden
-ansible-playbook site.yml --tags infra --limit infra-01
-
-# Check k3s cluster (from edge-01)
+# Check k3s cluster (from infra-01)
 sudo k3s kubectl get nodes
 
 # Full destroy & recreate
