@@ -9,14 +9,21 @@
     systemctl disable apt-daily-upgrade.timer 2>/dev/null || true
   changed_when: false
 
-- name: Update apt cache (waits up to 2min for lock)
+- name: Debug — check user and lock file permissions
   ansible.builtin.shell: |
-    apt-get -o DPkg::Lock::Timeout=120 update
+    echo "whoami=$(whoami)"
+    echo "id=$(id)"
+    ls -la /var/lib/apt/lists/lock 2>&1 || echo "lock file does not exist"
+    ls -la /var/lib/apt/lists/ | head -5
+    stat /var/lib/apt/lists/ 2>&1 || true
   changed_when: false
-  register: apt_update
-  retries: 5
-  delay: 10
-  until: apt_update is succeeded
+  register: debug_apt
+  failed_when: false
+
+- name: Show apt debug output
+  ansible.builtin.debug:
+    var: debug_apt.stdout_lines
+  when: debug_apt is defined
 
 - name: Upgrade all packages
   ansible.builtin.apt:
