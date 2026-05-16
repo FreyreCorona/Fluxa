@@ -1,5 +1,4 @@
-# Dejar vacío si se prefiere autenticar Tailscale manualmente
-tailscale_auth_key: ""
+tailscale_auth_key: "{{ vault_tailscale_auth_key }}"
 
 platform_dir: /opt/platform
 platform_user: ubuntu

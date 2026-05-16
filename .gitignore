@@ -5,3 +5,4 @@ ansible/.cache/
 ansible/**/__pycache__/
 *.retry
 
+.vault_pass
