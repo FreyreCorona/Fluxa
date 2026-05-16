@@ -9,28 +9,23 @@
     systemctl disable apt-daily-upgrade.timer 2>/dev/null || true
   changed_when: false
 
-- name: Debug — check user and lock file permissions
-  ansible.builtin.shell: |
-    echo "whoami=$(whoami)"
-    echo "id=$(id)"
-    ls -la /var/lib/apt/lists/lock 2>&1 || echo "lock file does not exist"
-    ls -la /var/lib/apt/lists/ | head -5
-    stat /var/lib/apt/lists/ 2>&1 || true
+- name: Update apt cache
+  become: yes
+  ansible.builtin.shell: apt-get update
   changed_when: false
-  register: debug_apt
-  failed_when: false
-
-- name: Show apt debug output
-  ansible.builtin.debug:
-    var: debug_apt.stdout_lines
-  when: debug_apt is defined
+  register: apt_update
+  retries: 3
+  delay: 5
+  until: apt_update is succeeded
 
 - name: Upgrade all packages
+  become: yes
   ansible.builtin.apt:
     upgrade: dist
     lock_timeout: 120
 
 - name: Install base packages
+  become: yes
   ansible.builtin.apt:
     name: "{{ base_packages }}"
     state: present
@@ -101,6 +96,7 @@
     update_cache: true
 
 - name: Install Docker packages
+  become: yes
   ansible.builtin.apt:
     name:
       - docker-ce
@@ -152,6 +148,7 @@
     state: started
 
 - name: Install Tailscale
+  become: yes
   ansible.builtin.apt:
     name: tailscale
     state: present
@@ -189,6 +186,7 @@
   changed_when: false
 
 - name: Install fail2ban
+  become: yes
   ansible.builtin.apt:
     name: fail2ban
     state: present
