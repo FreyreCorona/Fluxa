@@ -1,9 +1,12 @@
 - name: Disable automatic apt services
   ansible.builtin.shell: |
-    systemctl disable --now unattended-upgrades 2>/dev/null || true
+    timeout 10 systemctl stop unattended-upgrades 2>/dev/null || true
     systemctl mask unattended-upgrades 2>/dev/null || true
-    systemctl disable --now apt-daily.timer 2>/dev/null || true
-    systemctl disable --now apt-daily-upgrade.timer 2>/dev/null || true
+    systemctl disable unattended-upgrades 2>/dev/null || true
+    systemctl stop apt-daily.timer 2>/dev/null || true
+    systemctl disable apt-daily.timer 2>/dev/null || true
+    systemctl stop apt-daily-upgrade.timer 2>/dev/null || true
+    systemctl disable apt-daily-upgrade.timer 2>/dev/null || true
   changed_when: false
 
 - name: Update apt cache (waits up to 2min for lock)
