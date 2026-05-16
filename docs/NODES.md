@@ -1,170 +1,166 @@
 # Node Roles
 
 Todos los nodos:
-- pertenecen a la misma red Tailscale
-- utilizan bootstrap reproducible
-- poseen firewall configurado
-- usan observabilidad básica
-- utilizan acceso SSH mediante claves
-- utilizan despliegues reproducibles
+- pertenecen a Oracle Cloud (Always Free)
+- se provisionan con Terraform + CloudInit
+- pertenecen a la misma VCN y red Tailscale
+- ejecutan OracleCloudAgent para métricas OCI
+- utilizan OCI Vault para secretos
 - priorizan aislamiento entre planos de responsabilidad
 
 ---
 
-# EDGE NODE
+# EDGE NODE — `edge-01`
 
-Rol:
-- edge
-- ingress
+Shape: `VM.Standard.E2.1.Micro` (1/8 OCPU, 1 GB RAM)
 
-Host:
-- Oracle VPS #1
+Rol: ingress stateless
 
 Responsabilidad:
 - recibir tráfico público
 - terminación TLS
-- reverse proxy
-- routing hacia workloads internos
-- protección básica de acceso
+- reverse proxy (Traefik)
+- routing hacia workloads internos via Tailscale
+- protección básica (fail2ban)
 
 Servicios:
 - Traefik
 - fail2ban
-- metrics exporter
+- OracleCloudAgent
 
 Networking:
+- puertos públicos: 80, 443
+- puertos privados: ninguno
 - Tailscale
-- firewall restrictivo
-
-Exposición pública:
-- sí
-
-Puertos públicos:
-- 80
-- 443
-
-Puertos privados:
-- ninguno
+- OCI VCN security lists restrictivas
 
 Notas:
-- nodo stateless
-- no ejecuta workloads clientes
-- no contiene bases de datos
-- no contiene control plane Kubernetes
-- únicamente enruta tráfico hacia servicios internos
+- sin bases de datos
+- sin k3s
+- sin workloads
+- reemplazable sin perder estado
+
+CloudInit:
+```bash
+# bootstrap mínimo
+apt update && apt install -y tailscale docker.io
+tailscale up --auth-key $(oci vault secret --from OCI)
+docker run -d --name traefik ...  # o systemd unit
+```
 
 ---
 
-# CONTROL / INFRA NODE
+# CONTROL NODE — `control-01`
 
-Rol:
-- control plane
-- infra
+Shape: `VM.Standard.E2.1.Micro` (1/8 OCPU, 1 GB RAM)
 
-Host:
-- Atom Ubuntu Server
+Rol: control plane + base de datos + observabilidad
 
 Responsabilidad:
-- administración del cluster
-- API central del PaaS
-- orchestration de deployments
-- integración con GitHub
-- observabilidad
-- servicios internos de plataforma
+- administración del cluster k3s
+- base de datos PostgreSQL
+- observabilidad (métricas + uptime)
+- almacenamiento de estado de plataforma
 
 Servicios:
-- k3s server
+- k3s server (control plane)
 - PostgreSQL
-- Go API
-- VictoriaMetrics
-- Grafana
+- VictoriaMetrics + Grafana
 - UptimeKuma
+- OracleCloudAgent
 
 Networking:
-- únicamente Tailscale
-- firewall restrictivo
-
-Exposición pública:
-- no
-
-Puertos públicos:
-- ninguno
-
-Puertos privados:
-- PostgreSQL
-- k3s internal
-- observabilidad
+- sin puertos públicos
+- Tailscale
+- PostgreSQL: solo escucha en Tailscale IP
+- k3s API: disponible via Tailscale (6443)
+- VictoriaMetrics/Grafana: disponible via Tailscale
 
 Notas:
-- contiene estado crítico de la plataforma
-- no expuesto directamente a internet
-- Kubernetes realiza scheduling y orchestration
-- la Go API abstrae deployments y gestión del PaaS
-- preparado para futura separación entre control e infra
+- 1 GB RAM es ajustado. PostgreSQL configurado con `shared_buffers=256MB`, `effective_cache_size=512MB`.
+- k3s server con `--disable-agent` para no schedulear workloads aquí (hasta tener worker dedicado).
+- Si no hay ARM A1 disponible, este nodo también corre workloads como worker temporal.
+
+Secretos (almacenados en OCI Vault):
+- PostgreSQL password
+- k3s token
+- Tailscale auth key
+- Grafana admin password
+
+CloudInit:
+```bash
+# bootstrap
+apt update && apt install -y tailscale docker.io
+tailscale up --auth-key $(oci vault secret --from OCI)
+
+# PostgreSQL (optimizado para 1 GB RAM)
+docker run -d --name postgres \
+  -e POSTGRES_PASSWORD=$(oci vault secret --from OCI) \
+  -e shared_buffers=256MB \
+  -v /data/postgres:/var/lib/postgresql/data \
+  postgres:17
+
+# k3s server
+curl -sfL https://get.k3s.io | sh -s - \
+  --token $(oci vault secret --from OCI) \
+  --disable-agent \
+  --disable traefik \
+  --write-kubeconfig-mode 644
+
+# VictoriaMetrics + Grafana (docker compose)
+...
+```
 
 ---
 
-# WORKER NODE
+# WORKER NODE — `worker-01`
 
-Rol:
-- runtime
+Shape: `VM.Standard.A1.Flex` (ARM, pendiente disponibilidad)
 
-Host:
-- Oracle VPS #2
+Rol: runtime de workloads
 
 Responsabilidad:
 - ejecutar workloads clientes
 - ejecutar workloads internos
 - aislamiento de workloads
-- exposición indirecta mediante edge
+- exposición indirecta mediante edge-01
 
 Servicios:
 - k3s agent
-- runtime agent
-- metrics exporter
+- runtime agent (metrics exporter)
+- OracleCloudAgent
 
 Networking:
-- únicamente Tailscale
-- firewall restrictivo
-
-Exposición pública:
-- no
+- sin puertos públicos
+- Tailscale
+- solo se comunica con control-01 (k3s API) y edge-01 (tráfico ingress)
 
 Notas:
-- no contiene servicios críticos de plataforma
-- no contiene bases de datos principales
-- escalable horizontalmente
-- diseñado para agregar más workers en el futuro
-- los deployments son realizados mediante imágenes OCI generadas externamente
+- ARM A1 — pendiente de disponibilidad en la región.
+- Mientras tanto, los workloads se schedulean en control-01 como nodo k3s.
+- Al obtener ARM A1, control-01 deja de schedulear workloads.
 
 ---
 
-# Deployment Flow
+# Worker Temporal (hasta obtener ARM A1)
 
-Flujo esperado:
-- cliente conecta repositorio GitHub
-- GitHub Actions construye imagen OCI
-- imagen publicada en GitHub Container Registry
-- GitHub Actions consume API del PaaS
-- Go API actualiza recursos Kubernetes
-- Kubernetes realiza deployment en workers
+Mientras `worker-01` no exista, `control-01` actúa también como worker:
 
-Requerimientos mínimos:
-- Dockerfile válido
-- acceso al registry OCI
-- secrets de deployment configurados
+```bash
+# Reconfigurar k3s server para permitir pods
+k3s server --token $(oci vault secret --from OCI) \
+  --disable traefik \
+  --node-label "node-role.kubernetes.io/worker=true"
+```
 
-Responsabilidades del PaaS:
-- deployments
-- ingress
-- TLS
-- dominios
-- observabilidad básica
-- aislamiento entre tenants
-- lifecycle de aplicaciones
+Esto permite tener el PaaS funcional con 2 AMD Micro, aunque con capacidad limitada.
 
-Responsabilidades del cliente:
-- código fuente
-- pipeline CI/CD
-- construcción de imágenes
-- mantenimiento de aplicación
+---
+
+# Tabla Resumen
+
+| Nodo       | Shape             | RAM  | Público | Rol principal        | Cuando agregar ARM A1       |
+|------------|-------------------|------|---------|----------------------|-----------------------------|
+| edge-01    | E2.1.Micro        | 1 GB | Sí      | Traefik + fail2ban   | Se queda igual              |
+| control-01 | E2.1.Micro        | 1 GB | No      | k3s + PG + metrics   | Deja de schedulear workloads|
+| worker-01  | A1.Flex (ARM)     | 12 GB| No      | Workloads clientes   | Nuevo nodo dedicado         |

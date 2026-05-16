@@ -1,20 +1,19 @@
 # Platform Architecture
 
 Estado actual:
-- single edge node
-- single control/infra node
-- single worker
-- k3s-based runtime
-- tailscale mesh networking
-- GitHub-based CI/CD flow
+- 2 nodos AMD Micro (Oracle Always Free)
+- 1 futuro nodo ARM A1 (pendiente disponibilidad)
+- edge stateless
+- control + DB en mismo nodo (1 GB RAM — ajustado)
+- k3s como runtime substrate
+- Tailscale mesh networking
+- GitHub-centric CI/CD
+- Terraform + CloudInit (sin Ansible)
+- OCI Vault, Monitoring, Logging, Email Delivery
 
 Objetivo:
-Construir un PaaS pequeño, modular y portable,
-manteniendo separación clara entre:
-- edge
-- control plane
-- runtime
-- internal infrastructure
+Construir un PaaS pequeño, modular y portable sobre Oracle Cloud Free Tier,
+manteniendo separación clara entre edge, control plane y runtime.
 
 ---
 
@@ -24,432 +23,246 @@ La plataforma NO expone Kubernetes directamente al cliente.
 
 Kubernetes/k3s es el runtime substrate actual.
 
-La plataforma abstrae:
-- deployments
-- domains
-- ingress
-- lifecycle
-- observabilidad básica
+El cliente solo necesita:
+- Dockerfile válido
+- GitHub repo
+- k3s kubeconfig (vía GitHub Actions)
 
-El objetivo es ofrecer:
-- deploy simplificado
-- integración con GitHub
-- aislamiento entre tenants
-- runtime reproducible
+La plataforma abstrae:
+- ingress (Traefik)
+- TLS (automático)
+- dominios
+- observabilidad básica (VictoriaMetrics + OCI Monitoring)
+- runtime (k3s)
 
 ---
 
-# Arquitectura General
+# Topología (Always Free)
 
 ```text
                         Internet
-                            |
-                            v
-                    +----------------+
-                    |   Edge Node    |
-                    | VPS Oracle #1  |
-                    +----------------+
-                            |
-                            |
-                            v
-
-                 +----------------------+
-                 | Control / Infra Node |
-                 |  Atom Ubuntu Server  |
-                 +----------------------+
-                    |       |        |
-                    |       |        |
-                    |       |        +------------------+
-                    |       |                           |
-                    |       v                           v
-                    |   PostgreSQL               Observability
-                    |
-                    v
-
-                 k3s Control Plane
-                    |
-         +----------+----------+
-         |                     |
-         v                     v
-
-    Worker Node(s)      Future Worker Nodes
-      Oracle VPS #2
-
-                    ^
-                    |
-                    |
-             Tailscale Mesh
+                           |
+                           v
+               +------------------------+
+               |     edge-01            |  ← stateless
+               |  AMD Micro · 1 GB RAM  |  Oracle Always Free
+               |  Traefik · fail2ban    |
+               +------------------------+
+                           |
+                           | Tailscale
+                           v
+               +------------------------+
+               |    control-01          |  ← control + DB + observabilidad
+               |  AMD Micro · 1 GB RAM  |  Oracle Always Free
+               |  k3s server, PostgreSQL|
+               |  VictoriaMetrics       |
+               |  Grafana, UptimeKuma   |
+               +------------------------+
+                           |
+          +----------------+----------------+
+          |                                  |
+          v                                  v
+   +------------------+             +------------------+
+   |   worker-01      |             |  Future workers   |
+   |  ARM A1 (futuro) |             |  (más ARM A1)     |
+   |  12 GB RAM       |             |                   |
+   |  k3s agent       |             |                   |
+   +------------------+             +------------------+
 ```
 
 ---
 
-# Layer 1 — Edge Layer
+# Capas
 
-Nodo:
-- Oracle VPS #1
+## Layer 1 — Edge
 
-Responsabilidades:
-- entrypoint HTTP/HTTPS
-- TLS termination
-- reverse proxy
-- routing
-- protección básica
-- forwarding hacia workloads internos
+Nodo: `edge-01` (AMD Micro, 1 GB RAM)
+
+Propósito: entrypoint público, stateless.
 
 Servicios:
-- Traefik
+- Traefik (reverse proxy, TLS termination)
 - fail2ban
-- metrics exporter
+- OracleCloudAgent (métricas OCI)
+
+Sin bases de datos, sin control plane, sin workloads.
 
 ---
 
-## Decisiones de Diseño
+## Layer 2 — Control Plane
 
-### Edge Stateless
+Nodo: `control-01` (AMD Micro, 1 GB RAM)
 
-El Edge Node:
-- no almacena estado crítico
-- no contiene bases de datos
-- no ejecuta workloads clientes
-- no contiene control plane Kubernetes
-
-Esto permite:
-- reemplazo rápido
-- menor blast radius
-- menor complejidad operacional
-
----
-
-### Traefik como ingress layer
-
-Traefik fue elegido porque:
-- integra naturalmente con k3s
-- soporta dynamic service discovery
-- facilita ingress management
-- simplifica TLS automático
-- se alinea con patrones cloud-native
-
----
-
-# Layer 2 — Control Plane + Internal Infrastructure
-
-Nodo:
-- Atom Ubuntu Server
-
-Responsabilidades:
-- administración del cluster
-- API central del PaaS
-- orchestration de deployments
-- metadata de plataforma
-- integración con GitHub
-- observabilidad
-- servicios internos
+Propósito: administración del cluster, DB, observabilidad.
 
 Servicios:
 - k3s server
 - PostgreSQL
-- Go Control API
-- VictoriaMetrics
-- Grafana
+- VictoriaMetrics + Grafana
 - UptimeKuma
+- OracleCloudAgent (métricas OCI)
+
+Limitación: 1 GB RAM forzó a PostgreSQL y k3s server a cohabitar.
+Ajustes: PostgreSQL shared_buffers reducido, k3s sin telemetría.
+Migrar a ARM A1 cuando esté disponible.
 
 ---
 
-## Decisiones de Diseño
+## Layer 3 — Runtime
 
-### Kubernetes como runtime substrate
+Nodo: `worker-01` (ARM A1 — futuro)
 
-k3s fue elegido porque:
-- reduce complejidad operacional
-- simplifica orchestration
-- simplifica networking
-- simplifica service discovery
-- simplifica lifecycle management
-
-La plataforma NO reemplaza Kubernetes.
-
-Kubernetes:
-- schedulea workloads
-- maneja networking interno
-- realiza reconciliation
-- maneja restart policies
-- maneja deployments
-
-La plataforma abstrae:
-- UX
-- deployment workflow
-- tenant management
-- ingress
-- domains
-- metadata
-
----
-
-### Go API como control layer
-
-La Go API NO es un scheduler distribuido complejo.
-
-Responsabilidades:
-- deployments
-- integración GitHub
-- integración CI/CD
-- metadata
-- tenant management
-- domains
-- lifecycle de aplicaciones
-
-La API traduce requests de plataforma hacia:
-- Deployments
-- Services
-- Ingresses
-- Secrets
-- Namespaces
-
-de Kubernetes.
-
----
-
-### PostgreSQL centralizado inicialmente
-
-PostgreSQL permanece en el Control Node inicialmente.
-
-Razones:
-- menor complejidad operacional
-- pocos recursos disponibles
-- menor cantidad de moving parts
-- no existe necesidad real de HA
-
-Migración futura:
-- PostgreSQL separado
-- replication
-- backups remotos
-- HA parcial
-
----
-
-### Observabilidad separada del runtime
-
-La observabilidad vive fuera de los workers.
-
-Ventajas:
-- debugging más simple
-- workloads clientes aislados
-- métricas persistentes
-- menor impacto operacional
-
----
-
-# Layer 3 — Runtime Layer
-
-Nodo:
-- Oracle VPS #2
-
-Responsabilidades:
-- ejecutar workloads clientes
-- ejecutar workloads internos
-- runtime isolation
-- healthchecks
-- logs
-- métricas básicas
+Propósito: ejecutar workloads clientes.
 
 Servicios:
 - k3s agent
 - runtime agent
 - metrics exporter
 
----
-
-## Decisiones de Diseño
-
-### Workers especializados
-
-Los workers:
-- no contienen servicios críticos
-- no contienen bases de datos principales
-- no contienen control plane
-- no exponen servicios públicamente
-
-Esto permite:
-- scaling horizontal
-- aislamiento
-- menor riesgo operacional
+Hasta obtener ARM A1, los workloads corren en control-01 como nodo k3s adicional.
 
 ---
 
-### Runtime Agent ligero
+# OCI Services Integration
 
-El runtime agent existe para:
-- reporting
-- métricas
-- observabilidad
-- health status
-- metadata local
+## Vault
 
-NO reemplaza Kubernetes.
+Almacena todos los secretos de la plataforma:
+- PostgreSQL password
+- Tailscale auth key
+- k3s token
+- Traefik dashboard credentials
+- API keys de servicios
+
+Acceso vía OCI SDK/CLI o montado en pods con OCI Secrets Store CSI Driver.
+
+## Monitoring
+
+Métricas de infraestructura out-of-the-box:
+- CPU, RAM, disco, red por nodo
+- OracleCloudAgent instalado por defecto
+- Dashboards en OCI Console
+- Alarms configurable via MQL
+
+Usar para: estado de salud de nodos, alertas de disco/CPU.
+
+## Logging
+
+Logs centralizados de:
+- syslog de cada nodo
+- Traefik access logs
+- k3s logs
+- PostgreSQL logs
+
+10 GB/mes gratuitos — suficiente para la escala actual.
+
+## Email Delivery
+
+SMTP relay para notificaciones:
+- 3.000 emails/mes gratis
+- Puerto 587 con STARTTLS
+- Usar desde GitHub Actions o scripts de alerta
+
+---
+
+# Observabilidad (Dual)
+
+| Qué monitorear       | Herramienta         | Razón                              |
+|----------------------|---------------------|------------------------------------|
+| Infra (CPU, RAM, disk)| OCI Monitoring     | Out-of-the-box, zero config        |
+| k3s cluster metrics   | VictoriaMetrics    | Scrapeo nativo de exporters        |
+| Traefik metrics       | VictoriaMetrics    | Prometheus format                  |
+| Application metrics   | VictoriaMetrics    | Custom exporters                   |
+| Uptime                | UptimeKuma         | HTTP checks externos               |
+| Logs                  | OCI Logging        | Centralizado, sin stack ELK        |
 
 ---
 
 # Networking
 
-Toda la infraestructura pertenece a una misma red Tailscale.
+- Tailscale mesh entre todos los nodos
+- edge-01: expone puertos 80/443 al público
+- control-01: solo Tailscale
+- worker-01: solo Tailscale
+- Firewall OCI en VCN + iptables locales
 
-Ventajas:
-- private networking automático
-- WireGuard integrado
-- overlay networking simplificado
-- node discovery
-- menor exposición pública
-- configuración simplificada
+---
+
+# Provisioning
+
+```text
+terraform apply
+    ↓
+Oracle crea instancias + cloud-init
+    ↓
+CloudInit ejecuta script de bootstrap
+    ├── Tailscale join
+    ├── Docker install
+    ├── k3s install (server o agent)
+    ├── Traefik (solo edge)
+    ├── PostgreSQL (solo control)
+    ├── VictoriaMetrics + Grafana (solo control)
+    └── UptimeKuma (solo control)
+    ↓
+Nodo listo — sin SSH posterior
+```
+
+Sin Ansible. Sin dependencia de máquina local.
 
 ---
 
 # Deployment Flow
 
 ```text
-git push
+cliente: git push
     ↓
-GitHub Actions
+GitHub Actions: build image → push GHCR
     ↓
-build image
+GitHub Actions: kubectl apply (via kubeconfig almacenado en OCI Vault)
     ↓
-push GHCR
+k3s schedulea en worker-01
     ↓
-deployment request
-    ↓
-Go API
-    ↓
-Kubernetes Deployment update
-    ↓
-k3s scheduling
-    ↓
-Traefik ingress update
-    ↓
-TLS automático
+Traefik detecta nuevo ingress → TLS automático
     ↓
 application online
 ```
 
----
-
-# Deployment Model
-
-El contrato principal de la plataforma es:
-
-```text
-Dockerfile válido = deployment soportado
-```
-
-El cliente:
-- mantiene código fuente
-- mantiene pipeline CI/CD
-- construye imágenes OCI
-- publica imágenes
-
-La plataforma:
-- ejecuta workloads
-- administra ingress
-- administra TLS
-- administra domains
-- administra runtime
-- administra observabilidad básica
+Sin Go API. k3s + Traefik + GitHub Actions resuelven el ciclo.
 
 ---
 
-# GitHub-Centric Workflow
+# Roadmap
 
-La plataforma externaliza:
-- Git hosting
-- CI/CD
-- container registry
-- documentación estática
+## Fase 1 (ahora)
+- 2 AMD Micro: edge-01 + control-01
+- Terraform + CloudInit funcional
+- PostgreSQL + k3s server en control-01
+- Traefik en edge-01
+- OCI Vault para secrets
+- OCI Monitoring + VictoriaMetrics
+- GitHub Actions para deploys
 
-Servicios utilizados:
-- GitHub
-- GitHub Actions
-- GitHub Container Registry
-- GitHub Pages
+## Fase 2 (con ARM A1)
+- worker-01 dedicado con ARM A1
+- Migrar workloads a worker-01
+- Más RAM para PostgreSQL y k3s
+- Separar control e infra si es necesario
 
-Razones:
-- menor consumo de recursos
-- menor complejidad operacional
-- menor mantenimiento
-- enfoque en el core del PaaS
-
----
-
-# Scheduler Philosophy
-
-Inicialmente NO existe scheduler complejo propio.
-
-Kubernetes realiza:
-- placement
-- balancing
-- lifecycle
-- reconciliation
-
-La plataforma solamente puede aplicar:
-- node selection
-- affinity
-- quotas
-- limits
-- metadata lógica
-
-La complejidad operacional debe mantenerse baja.
+## Fase 3 (con clientes)
+- Múltiples workers ARM
+- Edge redundancy
+- Autoscaling
+- Multi-tenancy
 
 ---
 
-# Estado Actual
+# Principios
 
-Actual:
-- single edge node
-- single control/infra node
-- single worker node
-- single PostgreSQL
-- lightweight k3s cluster
-
-Objetivo actual:
-- estabilidad
-- reproducibilidad
-- velocidad de iteración
-- bajo costo operacional
-
----
-
-# Evolución Futura
-
-## Fase 1
-- estabilizar plataforma
-- auth
-- deployment API
-- domains
-- observabilidad básica
-
-## Fase 2
-- múltiples workers
-- logs centralizados
-- object storage
-- backups automáticos
-- tenant isolation mejorado
-
-## Fase 3
-- PostgreSQL separado
-- HA parcial
-- autoscaling
-- multi-region
-- edge redundancy
-
----
-
-# Principios Arquitectónicos
-
-- Kubernetes como runtime, no como producto
-- control plane separado del runtime
-- edge stateless
-- infraestructura interna aislada
-- simplicidad operacional primero
-- abstractions antes que complejidad
-- stateless-first
-- observabilidad desde el inicio
-- automatización reproducible
-- evolución gradual
-- foco en deployment UX
+- Edge stateless
+- Control plane separado del runtime
+- Simplicidad operacional primero
+- Sin herramientas externas (no Ansible, no Go API)
+- Aprovechar servicios OCI gratuitos antes de self-hostear
+- Observabilidad dual (OCI + VictoriaMetrics)
+- Todo el provisioning en Terraform + CloudInit
+- Evolución gradual, sin over-engineering
