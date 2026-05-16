@@ -33,3 +33,4 @@
     - docker-registry
     - victoriametrics
     - uptime-kuma
+    - vaultwarden

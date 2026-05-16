@@ -1,8 +1,10 @@
 firewall_ports:
   - 22/tcp
+  - 8888/tcp
 
 platform_dirs:
   - registry
   - gitea
   - monitoring
   - backups
+  - vaultwarden
