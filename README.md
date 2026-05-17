@@ -1,50 +1,54 @@
 # Fluxa — Modular PaaS
 
-PaaS modular sobre Oracle Cloud Always Free.  
-**2 nodos AMD Micro** (edge + worker) + **futuro ARM A1** (worker dedicado).  
-Todo provisionado con Terraform + CloudInit — sin Ansible.
+PaaS modular sobre Oracle Cloud Always Free + nodo físico local.  
+**2 nodos Oracle** (edge-01 + worker-01) + **infra-01** (físico, casa) + **futuro ARM A1**.  
+Provisionado con Terraform + CloudInit (edge y worker). Infra-01 integrado vía OCI services.
 
 ---
 
 ## Stack
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                        Internet                              │
-│                            │                                 │
-│                            v                                 │
-│  ┌──────────────────────────────────────────────────────┐    │
-│  │  edge-01  (AMD Micro, 1 GB)  ← stateless             │    │
-│  │  Traefik · fail2ban · OracleCloudAgent               │    │
-│  └──────────────────────┬───────────────────────────────┘    │
-│                         │ Tailscale                          │
-│                         v                                    │
-│  ┌──────────────────────────────────────────────────────┐    │
-│  │  control-01  (AMD Micro, 1 GB)                       │    │
-│  │  k3s server · PostgreSQL · VictoriaMetrics            │    │
-│  │  Grafana · UptimeKuma                                │    │
-│  └──────────────────────┬───────────────────────────────┘    │
-│                         │                                    │
-│                         v                                    │
-│  ┌──────────────────────────────────────────────────────┐    │
-│  │  worker-01  (AMD Micro, 1 GB)                        │    │
-│  │  k3s server · PostgreSQL · VictoriaMetrics            │    │
-│  │  Grafana · UptimeKuma · (y workloads)                │    │
-│  └──────────────────────┬───────────────────────────────┘    │
-│                         │                                    │
-│                         v                                    │
-│  ┌──────────────────────────────────────────────────────┐    │
-│  │  worker-02  (ARM A1 — futuro)                        │    │
-│  │  k3s agent · workloads dedicados                     │    │
-│  └──────────────────────────────────────────────────────┘    │
-│                                                              │
-│  OCI Services integrados:                                    │
-│  ├── Vault → secrets (PostgreSQL, Tailscale, API keys)       │
-│  ├── Monitoring → métricas de infra (CPU, RAM, disco)       │
-│  ├── Logging → logs centralizados                           │
-│  └── Email Delivery → SMTP (3.000/mes)                      │
-└──────────────────────────────────────────────────────────────┘
+                        Internet
+                           |
+                           v
+                +-------------------------+
+                |  edge-01                | ← stateless
+                |  AMD Micro · 1 GB       | Oracle Always Free
+                |  Traefik · fail2ban     |
+                |  OracleCloudAgent       |
+                +-----------+------------+
+                            | Tailscale
+          +-----------------+------------------+
+          |                                    |
+          v                                    v
++-------------------------+       +--------------------------+
+|  worker-01              |       |  infra-01                |
+|  AMD Micro · 1 GB       |       |  Physical PC · 24 GB    |
+|  k3s server + PG        |       |  Gitea · Registry (depr) |
+|  VictoriaMetrics + Graf |       |  CI runners · Backups    |
+|  UptimeKuma             |       |  OracleCloudAgent        |
+|  OracleCloudAgent       |       +-----------+--------------+
++-----------+------------+                   |
+            |                                |
+            v                                v
+    +------------------+          OCI Services:
+    |  worker-02       |          ├── Vault → secrets
+    |  ARM A1 (futuro) |          ├── Monitoring → métricas
+    |  k3s agent       |          ├── Logging → logs
+    +------------------+          └── Email → SMTP
 ```
+
+---
+
+## Nodos
+
+| Nodo      | Proveedor       | Shape / RAM        | Rol                                |
+|-----------|-----------------|--------------------|------------------------------------|
+| edge-01   | Oracle VPS      | E2.1.Micro · 1 GB  | Ingress stateless                  |
+| worker-01 | Oracle VPS      | E2.1.Micro · 1 GB  | Control plane + DB + workloads     |
+| infra-01  | Physical (home) | 4C/24G (Atom)      | Servicios internos + CI/CD         |
+| worker-02 | Oracle (futuro) | A1.Flex · 12 GB    | Workers dedicados (ARM A1)         |
 
 ---
 
@@ -55,7 +59,7 @@ git push
     ↓
 GitHub Actions → build image → push GHCR
     ↓
-kubectl apply (manual o GitHub Actions con kubeconfig)
+kubectl apply (via kubeconfig en OCI Vault)
     ↓
 k3s scheduling → worker-01 (o worker-02 ARM futuro)
     ↓
@@ -68,45 +72,29 @@ Sin Go API. k3s + Traefik resuelven el deployment flow.
 
 ---
 
-## Nodos
-
-| Nodo      | Shape             | RAM  | Rol                          | Tipo      |
-|-----------|-------------------|------|------------------------------|-----------|
-| edge-01   | VM.Standard.E2.1.Micro | 1 GB | Ingress stateless      | Oracle    |
-| worker-01 | VM.Standard.E2.1.Micro | 1 GB | Control plane + DB + workloads | Oracle    |
-| worker-02 | VM.Standard.A1.Flex*   | 12 GB| Runtime workloads dedicados    | Oracle    |
-
-\* ARM A1 pendiente de disponibilidad.
-
----
-
 ## Provisioning
 
 ```bash
-cd terraform
-terraform apply   # crea VPS + cloud-init嵌入
+./provision.sh
+  # terraform apply (edge-01 + worker-01)
+  # cloud-init los bootstrapea automáticamente
 ```
 
-Sin Ansible. CloudInit instala todo al primer boot:
-- Docker / k3s
-- Traefik
-- PostgreSQL
-- VictoriaMetrics + Grafana
-- Tailscale
-- OracleCloudAgent (métricas OCI)
+Infra-01 es físico y se configura manualmente o con scripts legacy.
 
 ---
 
-## Servicios OCI Integrados
+## OCI Services Integrados
 
-| Servicio          | Uso                                      | Límite Always Free        |
-|-------------------|------------------------------------------|---------------------------|
-| Vault             | Secrets (DB, Tailscale, API)             | 20 HSM keys, 150 secrets  |
-| Monitoring        | Métricas de infraestructura              | 500M ingest/mes           |
-| Logging           | Logs centralizados (syslog, Traefik, k3s)| 10 GB/mes                 |
-| Email Delivery    | SMTP notificaciones                      | 3.000 emails/mes          |
-| Object Storage    | Backups PostgreSQL + configs             | 20 GB                     |
-| Block Volume      | Boot volumes + datos                     | 200 GB total              |
+| Servicio         | Uso                                      | Accede desde                |
+|------------------|------------------------------------------|-----------------------------|
+| Vault            | Secrets (PostgreSQL, Tailscale, k3s)     | edge, worker, infra         |
+| Monitoring       | Métricas de CPU/RAM/disco                | edge, worker, infra         |
+| Logging          | Logs centralizados (syslog, Traefik, k3s)| edge, worker, infra         |
+| Email Delivery   | SMTP notificaciones (3.000/mes)          | GitHub Actions, scripts     |
+| Object Storage   | Backups PostgreSQL + configs             | worker-01 (cron)            |
+
+Todos los nodos (incluyendo infra-01) ejecutan OracleCloudAgent para enviar métricas y logs a OCI.
 
 ---
 
@@ -114,8 +102,8 @@ Sin Ansible. CloudInit instala todo al primer boot:
 
 Dual:
 
-- **OCI Monitoring** → métricas de nodo (CPU, RAM, disco, red). Dashboard en OCI Console.
-- **VictoriaMetrics + Grafana** → métricas de k3s, Traefik, aplicaciones. Scrapeo interno via Tailscale.
+- **OCI Monitoring** → métricas de infra (CPU, RAM, disco, red) de todos los nodos
+- **VictoriaMetrics + Grafana** → métricas de k3s, Traefik, aplicaciones (solo worker-01)
 
 ---
 
@@ -123,7 +111,7 @@ Dual:
 
 | Fase | Qué                                   |
 |------|---------------------------------------|
-| 1    | Estabilizar 2 AMD Micro + CloudInit   |
-| 2    | Conseguir ARM A1 → worker dedicado    |
-| 3    | Primer cliente en producción          |
+| 1    | Edge + worker estables con CloudInit  |
+| 2    | Conseguir ARM A1 → worker-02 dedicado |
+| 3    | Migrar infra-01 a Oracle              |
 | 4    | Escalar workers + edge redundancy     |

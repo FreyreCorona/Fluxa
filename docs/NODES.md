@@ -1,10 +1,8 @@
 # Node Roles
 
 Todos los nodos:
-- pertenecen a Oracle Cloud (Always Free)
-- se provisionan con Terraform + CloudInit
-- pertenecen a la misma VCN y red Tailscale
-- ejecutan OracleCloudAgent para métricas OCI
+- pertenecen a la misma red Tailscale
+- ejecutan OracleCloudAgent para métricas y logs OCI
 - utilizan OCI Vault para secretos
 - priorizan aislamiento entre planos de responsabilidad
 
@@ -13,154 +11,117 @@ Todos los nodos:
 # EDGE NODE — `edge-01`
 
 Shape: `VM.Standard.E2.1.Micro` (1/8 OCPU, 1 GB RAM)
+Provider: Oracle Always Free
+Provisioning: Terraform + CloudInit
 
 Rol: ingress stateless
 
-Responsabilidad:
-- recibir tráfico público
-- terminación TLS
-- reverse proxy (Traefik)
-- routing hacia workloads internos via Tailscale
-- protección básica (fail2ban)
-
 Servicios:
-- Traefik
+- Traefik (reverse proxy, TLS, dashboards)
 - fail2ban
 - OracleCloudAgent
 
 Networking:
-- puertos públicos: 80, 443
-- puertos privados: ninguno
-- Tailscale
-- OCI VCN security lists restrictivas
+- público: 80, 443
+- privado: ninguno
+- Tailscale para llegar a worker-01 e infra-01
 
 Notas:
-- sin bases de datos
-- sin k3s
-- sin workloads
+- sin bases de datos, sin k3s, sin workloads
 - reemplazable sin perder estado
 
-CloudInit:
-```bash
-# bootstrap mínimo
-apt update && apt install -y tailscale docker.io
-tailscale up --auth-key $(oci vault secret --from OCI)
-docker run -d --name traefik ...  # o systemd unit
-```
-
----
-
-# CONTROL NODE — `control-01`
-
-Shape: `VM.Standard.E2.1.Micro` (1/8 OCPU, 1 GB RAM)
-
-Rol: control plane + base de datos + observabilidad
-
-Responsabilidad:
-- administración del cluster k3s
-- base de datos PostgreSQL
-- observabilidad (métricas + uptime)
-- almacenamiento de estado de plataforma
-
-Servicios:
-- k3s server (control plane)
-- PostgreSQL
-- VictoriaMetrics + Grafana
-- UptimeKuma
-- OracleCloudAgent
-
-Networking:
-- sin puertos públicos
-- Tailscale
-- PostgreSQL: solo escucha en Tailscale IP
-- k3s API: disponible via Tailscale (6443)
-- VictoriaMetrics/Grafana: disponible via Tailscale
-
-Notas:
-- 1 GB RAM es ajustado. PostgreSQL configurado con `shared_buffers=256MB`, `effective_cache_size=512MB`.
-- k3s server con `--disable-agent` para no schedulear workloads aquí (hasta tener worker dedicado).
-- Si no hay ARM A1 disponible, este nodo también corre workloads como worker temporal.
-
-Secretos (almacenados en OCI Vault):
-- PostgreSQL password
-- k3s token
-- Tailscale auth key
-- Grafana admin password
-
-CloudInit:
-```bash
-# bootstrap
-apt update && apt install -y tailscale docker.io
-tailscale up --auth-key $(oci vault secret --from OCI)
-
-# PostgreSQL (optimizado para 1 GB RAM)
-docker run -d --name postgres \
-  -e POSTGRES_PASSWORD=$(oci vault secret --from OCI) \
-  -e shared_buffers=256MB \
-  -v /data/postgres:/var/lib/postgresql/data \
-  postgres:17
-
-# k3s server
-curl -sfL https://get.k3s.io | sh -s - \
-  --token $(oci vault secret --from OCI) \
-  --disable-agent \
-  --disable traefik \
-  --write-kubeconfig-mode 644
-
-# VictoriaMetrics + Grafana (docker compose)
-...
-```
+CloudInit: `terraform/cloud-init/edge-01.sh.tpl`
 
 ---
 
 # WORKER NODE — `worker-01`
 
-Shape: `VM.Standard.A1.Flex` (ARM, pendiente disponibilidad)
+Shape: `VM.Standard.E2.1.Micro` (1/8 OCPU, 1 GB RAM)
+Provider: Oracle Always Free
+Provisioning: Terraform + CloudInit
 
-Rol: runtime de workloads
-
-Responsabilidad:
-- ejecutar workloads clientes
-- ejecutar workloads internos
-- aislamiento de workloads
-- exposición indirecta mediante edge-01
+Rol: control plane + base de datos + observabilidad + workloads temporales
 
 Servicios:
-- k3s agent
-- runtime agent (metrics exporter)
+- k3s server (control plane, también schedulea pods)
+- PostgreSQL 17 (tuneado: shared_buffers=256MB, max_connections=20)
+- VictoriaMetrics + Grafana
+- UptimeKuma
 - OracleCloudAgent
 
 Networking:
-- sin puertos públicos
+- sin IP pública
 - Tailscale
-- solo se comunica con control-01 (k3s API) y edge-01 (tráfico ingress)
+- PostgreSQL y k3s API solo via Tailscale
 
 Notas:
-- ARM A1 — pendiente de disponibilidad en la región.
-- Mientras tanto, los workloads se schedulean en control-01 como nodo k3s.
-- Al obtener ARM A1, control-01 deja de schedulear workloads.
+- 1 GB RAM es ajustado. PostgreSQL con configuración mínima.
+- k3s sin `--disable-agent`: este nodo también corre workloads.
+- Al obtener worker-02 (ARM A1), los workloads se migran y worker-01 queda solo como control.
+
+CloudInit: `terraform/cloud-init/worker-01.sh.tpl`
 
 ---
 
-# Worker Temporal (hasta obtener ARM A1)
+# INFRA NODE — `infra-01`
 
-Mientras `worker-01` no exista, `control-01` actúa también como worker:
+Shape: Físico (Atom, 4C/24G)
+Provider: Physical (home)
+Provisioning: Manual + scripts legacy
 
-```bash
-# Reconfigurar k3s server para permitir pods
-k3s server --token $(oci vault secret --from OCI) \
-  --disable traefik \
-  --node-label "node-role.kubernetes.io/worker=true"
-```
+Rol: servicios internos legacy + CI/CD + backups
 
-Esto permite tener el PaaS funcional con 2 AMD Micro, aunque con capacidad limitada.
+Servicios actuales:
+- Gitea (puerto 3000) — deprecating, migrando a GitHub
+- Docker Registry (puerto 5000) — deprecating, migrando a GHCR
+- CI runners
+- Backups
+- OracleCloudAgent
+
+Integración OCI:
+- OracleCloudAgent instalado para enviar métricas a OCI Monitoring
+- Logs enviados a OCI Logging via cloud agent
+- Secrets leídos desde OCI Vault (OCI CLI + API key)
+- OCI Email Delivery como SMTP relay para notificaciones
+
+Networking:
+- solo Tailscale (sin exponer puertos)
+- se conecta a OCI services via internet (autenticado con API key)
+
+Futuro:
+- migrar servicios restantes a Oracle
+- reemplazar con instancia Oracle (ARM A1 o AMD)
+
+---
+
+# WORKER-02 (futuro) — `worker-02`
+
+Shape: `VM.Standard.A1.Flex` (ARM, 12 GB RAM)
+Provider: Oracle Always Free (pendiente disponibilidad)
+Provisioning: Terraform + CloudInit
+
+Rol: runtime de workloads dedicado
+
+Servicios:
+- k3s agent
+- runtime agent
+- OracleCloudAgent
+
+Networking:
+- sin IP pública
+- solo Tailscale
+
+Notas:
+- Al activarlo, worker-01 deja de schedulear workloads
+- k3s taint en worker-01 para evitar scheduling de pods
 
 ---
 
 # Tabla Resumen
 
-| Nodo       | Shape             | RAM  | Público | Rol principal        | Cuando agregar ARM A1       |
-|------------|-------------------|------|---------|----------------------|-----------------------------|
-| edge-01    | E2.1.Micro        | 1 GB | Sí      | Traefik + fail2ban   | Se queda igual              |
-| control-01 | E2.1.Micro        | 1 GB | No      | k3s + PG + metrics   | Deja de schedulear workloads|
-| worker-01  | A1.Flex (ARM)     | 12 GB| No      | Workloads clientes   | Nuevo nodo dedicado         |
+| Nodo      | Proveedor       | Shape             | RAM  | Público | Rol principal                      |
+|-----------|-----------------|--------------------|------|---------|------------------------------------|
+| edge-01   | Oracle          | E2.1.Micro         | 1 GB | Sí      | Traefik + fail2ban                 |
+| worker-01 | Oracle          | E2.1.Micro         | 1 GB | No      | k3s + PG + metrics + workloads     |
+| infra-01  | Physical (home) | —                  | 24 GB| No      | Servicios legacy + CI/CD + backups |
+| worker-02 | Oracle (futuro) | A1.Flex (ARM)      | 12 GB| No      | Workloads dedicados                |

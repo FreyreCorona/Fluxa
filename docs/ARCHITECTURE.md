@@ -1,10 +1,12 @@
 # Platform Architecture
 
 Estado actual:
-- 2 nodos AMD Micro (Oracle Always Free)
-- 1 futuro nodo ARM A1 (pendiente disponibilidad)
+- 2 nodos AMD Micro en Oracle (edge-01 + worker-01)
+- 1 nodo físico local (infra-01 — servicios legacy + CI/CD)
+- 1 futuro nodo ARM A1 (worker-02, pendiente disponibilidad)
 - edge stateless
-- control + DB en mismo nodo (1 GB RAM — ajustado)
+- worker-01: control plane + DB + observabilidad + workloads
+- infra-01: integrado con OCI services (Vault, Monitoring, Logging)
 - k3s como runtime substrate
 - Tailscale mesh networking
 - GitHub-centric CI/CD
@@ -43,31 +45,29 @@ La plataforma abstrae:
                         Internet
                            |
                            v
-               +------------------------+
-               |     edge-01            |  ← stateless
-               |  AMD Micro · 1 GB RAM  |  Oracle Always Free
-               |  Traefik · fail2ban    |
-               +------------------------+
+                +------------------------+
+                |      edge-01           |  ← stateless
+                |  AMD Micro · 1 GB RAM  |  Oracle Always Free
+                |  Traefik · fail2ban    |
+                +------------------------+
                            |
                            | Tailscale
-                           v
-               +------------------------+
-               |    control-01          |  ← control + DB + observabilidad
-               |  AMD Micro · 1 GB RAM  |  Oracle Always Free
-               |  k3s server, PostgreSQL|
-               |  VictoriaMetrics       |
-               |  Grafana, UptimeKuma   |
-               +------------------------+
-                           |
           +----------------+----------------+
-          |                                  |
-          v                                  v
-   +------------------+             +------------------+
-   |   worker-01      |             |  Future workers   |
-   |  ARM A1 (futuro) |             |  (más ARM A1)     |
-   |  12 GB RAM       |             |                   |
-   |  k3s agent       |             |                   |
-   +------------------+             +------------------+
+          |                |                |
+          v                v                v
++------------------+ +----------+ +------------------+
+|   worker-01      | | infra-01 | | worker-02        |
+| AMD Micro · 1 GB | | Físico   | | ARM A1 (futuro)  |
+| k3s + PG + VM    | | Gitea    | | k3s agent        |
+| Grafana + Kuma   | | Registry | | workloads ded.   |
+| OracleCloudAgent | | Backups  | |                  |
++------------------+ +----------+ +------------------+
+                          │ OCI Services (via API key)
+                          ├── Vault → secrets
+                          ├── Monitoring → métricas
+                          ├── Logging → logs
+                          └── Email → SMTP
+
 ```
 
 ---
@@ -89,37 +89,53 @@ Sin bases de datos, sin control plane, sin workloads.
 
 ---
 
-## Layer 2 — Control Plane
+## Layer 2 — Control Plane + Runtime
 
-Nodo: `control-01` (AMD Micro, 1 GB RAM)
+Nodo: `worker-01` (AMD Micro, 1 GB RAM)
 
-Propósito: administración del cluster, DB, observabilidad.
+Propósito: control plane k3s, base de datos, observabilidad, y workloads temporales.
 
 Servicios:
-- k3s server
+- k3s server (control plane + schedulea pods)
 - PostgreSQL
 - VictoriaMetrics + Grafana
 - UptimeKuma
 - OracleCloudAgent (métricas OCI)
 
 Limitación: 1 GB RAM forzó a PostgreSQL y k3s server a cohabitar.
-Ajustes: PostgreSQL shared_buffers reducido, k3s sin telemetría.
-Migrar a ARM A1 cuando esté disponible.
+Ajustes: PostgreSQL shared_buffers=256MB, max_connections=20.
 
 ---
 
-## Layer 3 — Runtime
+## Layer 3 — Infraestructura Interna
 
-Nodo: `worker-01` (ARM A1 — futuro)
+Nodo: `infra-01` (físico, casa)
 
-Propósito: ejecutar workloads clientes.
+Propósito: servicios legacy, CI/CD, backups.
+
+Servicios:
+- Gitea (deprecating → GitHub)
+- Docker Registry (deprecating → GHCR)
+- CI runners
+- Backups
+- OracleCloudAgent (métricas y logs a OCI)
+
+Nota: no provisionado por Terraform. Integrado con OCI via API key.
+
+---
+
+## Layer 4 — Runtime Dedicado (futuro)
+
+Nodo: `worker-02` (ARM A1 — futuro)
+
+Propósito: ejecutar workloads clientes de forma aislada.
 
 Servicios:
 - k3s agent
 - runtime agent
 - metrics exporter
 
-Hasta obtener ARM A1, los workloads corren en control-01 como nodo k3s adicional.
+Al obtener este nodo, worker-01 deja de schedulear workloads.
 
 ---
 
@@ -182,8 +198,9 @@ SMTP relay para notificaciones:
 
 - Tailscale mesh entre todos los nodos
 - edge-01: expone puertos 80/443 al público
-- control-01: solo Tailscale
 - worker-01: solo Tailscale
+- infra-01: solo Tailscale
+- worker-02: solo Tailscale (futuro)
 - Firewall OCI en VCN + iptables locales
 
 ---
@@ -191,6 +208,7 @@ SMTP relay para notificaciones:
 # Provisioning
 
 ```text
+# edge-01 y worker-01:
 terraform apply
     ↓
 Oracle crea instancias + cloud-init
@@ -198,16 +216,18 @@ Oracle crea instancias + cloud-init
 CloudInit ejecuta script de bootstrap
     ├── Tailscale join
     ├── Docker install
-    ├── k3s install (server o agent)
-    ├── Traefik (solo edge)
-    ├── PostgreSQL (solo control)
-    ├── VictoriaMetrics + Grafana (solo control)
-    └── UptimeKuma (solo control)
+    ├── k3s install
+    ├── Traefik (edge)
+    ├── PostgreSQL (worker)
+    ├── VictoriaMetrics + Grafana (worker)
+    └── UptimeKuma (worker)
     ↓
 Nodo listo — sin SSH posterior
-```
 
-Sin Ansible. Sin dependencia de máquina local.
+# infra-01 (físico):
+Configuración manual + OracleCloudAgent
+Secrets desde OCI Vault via OCI CLI
+```
 
 ---
 
@@ -234,25 +254,24 @@ Sin Go API. k3s + Traefik + GitHub Actions resuelven el ciclo.
 # Roadmap
 
 ## Fase 1 (ahora)
-- 2 AMD Micro: edge-01 + control-01
+- edge-01 + worker-01 (AMD Micro)
+- infra-01 físico + integración OCI services
 - Terraform + CloudInit funcional
-- PostgreSQL + k3s server en control-01
+- PostgreSQL + k3s server en worker-01
 - Traefik en edge-01
-- OCI Vault para secrets
-- OCI Monitoring + VictoriaMetrics
+- OCI Vault, Monitoring, Logging
 - GitHub Actions para deploys
 
 ## Fase 2 (con ARM A1)
-- worker-01 dedicado con ARM A1
-- Migrar workloads a worker-01
-- Más RAM para PostgreSQL y k3s
-- Separar control e infra si es necesario
+- worker-02 dedicado con ARM A1
+- Migrar workloads a worker-02
+- worker-01 queda solo como control plane
 
-## Fase 3 (con clientes)
+## Fase 3
+- Migrar infra-01 a Oracle
 - Múltiples workers ARM
 - Edge redundancy
 - Autoscaling
-- Multi-tenancy
 
 ---
 
