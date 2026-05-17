@@ -1,9 +1,0 @@
-- name: Create Go API directories
-  ansible.builtin.file:
-    path: "{{ platform_dir }}/services/api"
-    state: directory
-    mode: "0755"
-
-- name: TODO — Deploy Go API binary
-  ansible.builtin.debug:
-    msg: "Go API not yet implemented — deploy binary or container here"

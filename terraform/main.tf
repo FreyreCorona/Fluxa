@@ -38,6 +38,31 @@ data "oci_core_images" "ubuntu" {
   sort_order               = "DESC"
 }
 
+# ── OCI Vault Secrets ───────────────────────────────────────
+
+data "oci_secrets_secretbundle" "tailscale_key" {
+  secret_id = var.ocid_tailscale_secret
+}
+
+data "oci_secrets_secretbundle" "postgres_password" {
+  secret_id = var.ocid_postgres_secret
+}
+
+data "oci_secrets_secretbundle" "k3s_token" {
+  secret_id = var.ocid_k3s_secret
+}
+
+data "oci_secrets_secretbundle" "grafana_password" {
+  secret_id = var.ocid_grafana_secret
+}
+
+locals {
+  tailscale_key    = base64decode(data.oci_secrets_secretbundle.tailscale_key.secret_bundle_content.content)
+  pg_password      = base64decode(data.oci_secrets_secretbundle.postgres_password.secret_bundle_content.content)
+  k3s_token        = base64decode(data.oci_secrets_secretbundle.k3s_token.secret_bundle_content.content)
+  grafana_password = base64decode(data.oci_secrets_secretbundle.grafana_password.secret_bundle_content.content)
+}
+
 # ── Networking ──────────────────────────────────────────────
 
 resource "oci_core_vcn" "fluxa" {
@@ -162,7 +187,7 @@ resource "oci_core_instance" "edge_01" {
   metadata = {
     ssh_authorized_keys = tls_private_key.fluxa.public_key_openssh
     user_data           = base64encode(templatefile("${path.module}/cloud-init/edge-01.sh.tpl", {
-      tailscale_key  = var.tailscale_key
+      tailscale_key  = local.tailscale_key
       acme_email     = var.acme_email
       domain         = var.domain
       traefik_users  = var.traefik_users
@@ -195,10 +220,10 @@ resource "oci_core_instance" "worker_01" {
   metadata = {
     ssh_authorized_keys = tls_private_key.fluxa.public_key_openssh
     user_data           = base64encode(templatefile("${path.module}/cloud-init/worker-01.sh.tpl", {
-      tailscale_key     = var.tailscale_key
-      pg_password       = var.pg_password
-      k3s_token         = var.k3s_token
-      grafana_password  = var.grafana_password
+      tailscale_key     = local.tailscale_key
+      pg_password       = local.pg_password
+      k3s_token         = local.k3s_token
+      grafana_password  = local.grafana_password
     }))
   }
 

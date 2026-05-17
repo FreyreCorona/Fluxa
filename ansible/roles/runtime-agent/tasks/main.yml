@@ -1,9 +1,0 @@
-- name: Create runtime agent directories
-  ansible.builtin.file:
-    path: "{{ platform_dir }}/services/runtime-agent"
-    state: directory
-    mode: "0755"
-
-- name: TODO — Deploy runtime agent binary
-  ansible.builtin.debug:
-    msg: "Runtime agent not yet implemented — deploy binary or container here"

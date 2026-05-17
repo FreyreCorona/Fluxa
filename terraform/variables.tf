@@ -57,31 +57,29 @@ variable "worker_shape" {
   default     = "VM.Standard.E2.1.Micro"
 }
 
-# ── Secrets (pasados a cloud-init) ─────────────────────────
+# ── OCI Vault Secret OCIDs ──────────────────────────────────
 
-variable "tailscale_key" {
-  description = "Tailscale pre-auth key"
+variable "ocid_tailscale_secret" {
+  description = "OCID of the Tailscale auth key secret in OCI Vault"
   type        = string
-  sensitive   = true
 }
 
-variable "k3s_token" {
-  description = "k3s cluster token"
+variable "ocid_postgres_secret" {
+  description = "OCID of the PostgreSQL password secret in OCI Vault"
   type        = string
-  sensitive   = true
 }
 
-variable "pg_password" {
-  description = "PostgreSQL password"
+variable "ocid_k3s_secret" {
+  description = "OCID of the k3s token secret in OCI Vault"
   type        = string
-  sensitive   = true
 }
 
-variable "grafana_password" {
-  description = "Grafana admin password"
+variable "ocid_grafana_secret" {
+  description = "OCID of the Grafana admin password secret in OCI Vault"
   type        = string
-  sensitive   = true
 }
+
+# ── Config ─────────────────────────────────────────────────
 
 variable "acme_email" {
   description = "Email for Let's Encrypt certificate registration"

@@ -1,8 +1,0 @@
-k3s_role: agent
-k3s_server_ip: 100.127.57.43
-k3s_token: "{{ vault_k3s_token }}"
-
-firewall_ports:
-  - 22/tcp
-
-platform_dirs: []

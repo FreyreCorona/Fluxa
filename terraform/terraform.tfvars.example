@@ -5,11 +5,12 @@ fingerprint     = "<your-api-key-fingerprint>"
 private_key_path = "~/.oci/oci_api_key.pem"
 region          = "sa-saopaulo-1"
 
-# Secrets (cloud-init)
-tailscale_key   = "tskey-auth-<your-tailscale-key>"
-k3s_token       = "<random-32-char-token>"
-pg_password     = "<random-password>"
-grafana_password = "<random-password>"
+# OCI Vault Secret OCIDs (crear secrets manualmente y copiar OCIDs)
+ocid_tailscale_secret  = "ocid1.vaultsecret.oc1..<tailscale-secret-ocid>"
+ocid_postgres_secret   = "ocid1.vaultsecret.oc1..<postgres-secret-ocid>"
+ocid_k3s_secret        = "ocid1.vaultsecret.oc1..<k3s-secret-ocid>"
+ocid_grafana_secret    = "ocid1.vaultsecret.oc1..<grafana-secret-ocid>"
+
 acme_email      = "admin@yourdomain.com"
 domain          = "yourdomain.com"
 traefik_users   = "admin:<htpasswd-hash>"
