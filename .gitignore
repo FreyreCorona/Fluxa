@@ -1,10 +1,3 @@
-bootstrap.zip
-
-# Ansible
-.cache/
-ansible/.cache/
-ansible/**/__pycache__/
-*.retry
-
-.vault_pass
+# Terraform
 /terraform/.terraform
+/tf/.terraform
