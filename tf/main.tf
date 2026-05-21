@@ -5,10 +5,6 @@ terraform {
         source = "oracle/oci"
         version = ">= 8.14"
       }
-      tls ={
-        source = "hashicorp/tls"
-        version = ">= 4.0"
-      }
     }
 }
 
@@ -88,68 +84,33 @@ resource "oci_core_route_table" "fluxa_route_table" {
   }
 }
 
-/* Instances */
+/* Instances*/
 
-# See https://docs.oracle.com/iaas/images/
-
-data "oci_core_images" "Fluxa_images" {
-  compartment_id           = var.compartment_id
-  operating_system         = "Canonical Ubuntu"
-  operating_system_version = "24.04"
-  shape                    = var.instance_shape
-  sort_by                  = "TIMECREATED"
-  sort_order               = "DESC"
-}
-
-resource "oci_core_instance" "worker-01" {
-  availability_domain = data.oci_identity_availability_domain.Fluxa_ad.name
+module "fluxa_instance_01" {
+  source = "./modules/oci_micro_instance"
   compartment_id = var.compartment_id
+  subnet_id = oci_core_subnet.fluxa_vcn_subnet.id
   display_name = "worker-01"
-  shape = var.instance_shape
-  
-
-  create_vnic_details {
-    assign_public_ip = true
-    subnet_id = oci_core_subnet.fluxa_vcn_subnet.id
-  }
-
-  source_details {
-    source_type = "image"
-    source_id = data.oci_core_images.Fluxa_images.images[0].id
-  }
-
-  metadata = {
-    ssh_authorized_keys = (var.ssh_public_key != "") ? var.ssh_public_key : tls_private_key.Fluxa_ssh_key.public_key_openssh
-  }
+  ssh_public_key = var.ssh_public_key
 }
 
-resource "oci_core_instance" "edge-01" {
-  availability_domain = data.oci_identity_availability_domain.Fluxa_ad.name
+output "worker_public_ip" {
+  value = module.fluxa_instance_01.public_ip
+}
+
+module "fluxa_instance_02" {
+  source = "./modules/oci_micro_instance"
   compartment_id = var.compartment_id
+  subnet_id = oci_core_subnet.fluxa_vcn_subnet.id
   display_name = "edge-01"
-  shape = var.instance_shape
-
-  create_vnic_details {
-    assign_public_ip = true
-    subnet_id = oci_core_subnet.fluxa_vcn_subnet.id
-  }
-
-  source_details {
-    source_type = "image"
-    source_id = data.oci_core_images.Fluxa_images.images[0].id
-  }
-
-  metadata = {
-    ssh_authorized_keys = (var.ssh_public_key != "") ? var.ssh_public_key : tls_private_key.Fluxa_ssh_key.public_key_openssh
-  }
+  ssh_public_key = var.ssh_public_key
 }
 
-resource "tls_private_key" "Fluxa_ssh_key" {
-  algorithm = "RSA"
-  rsa_bits = 2048
+output "edge_public_ip" {
+  value = module.fluxa_instance_02.public_ip
 }
 
-output "generated_private_key_pem" {
-  value     = (var.ssh_public_key != "") ? var.ssh_public_key : tls_private_key.Fluxa_ssh_key.private_key_pem
+output "generated_private_key" {
+  value     = module.fluxa_instance_01.generated_private_key_pem
   sensitive = true
 }
