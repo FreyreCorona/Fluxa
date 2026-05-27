@@ -37,6 +37,17 @@ module "fluxa_network"{
 
 }
 
+/* Load Balancer */
+module "fluxa_lb" {
+  source = "./modules/oci_load_balancer"
+  subnet_id = module.fluxa_network.subnet_id
+  compartment_id = var.compartment_id
+  instance_private_ips = [module.fluxa_instance_01.private_ip,module.fluxa_instance_02.private_ip]
+
+  lb_display_name = "fluxa_lb"
+  lb_backend_set_name = "fluxa_lb_backend_set"
+}
+
 /* Instances*/
 module "fluxa_instance_01" {
   source = "./modules/oci_micro_instance"
