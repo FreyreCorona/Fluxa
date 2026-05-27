@@ -6,6 +6,13 @@ terraform {
         version = ">= 8.14"
       }
     }
+
+    backend "oci" {
+      bucket = "Fluxa-tfstate"
+      key = "terraform.tfstate"
+      region = "sa-saopaulo-1"
+      namespace= "gr4pwtm8lqg3" 
+    }
 }
 
 provider "oci" {
