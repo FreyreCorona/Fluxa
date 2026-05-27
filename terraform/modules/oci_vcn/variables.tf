@@ -37,3 +37,9 @@ variable "route_table_display_name" {
   type = string
   default = ""
 }
+
+variable "ssh_source_cidr" {
+  description = "CIDR block allowed for SSH access"
+  type        = string
+  default     = "0.0.0.0/0"
+}

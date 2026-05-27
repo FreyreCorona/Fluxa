@@ -26,6 +26,12 @@ variable "region" {
     type = string
 }
 
+variable "ssh_source_cidr" {
+  description = "CIDR block allowed for SSH access"
+  type        = string
+  default     = "0.0.0.0/0"
+}
+
 variable "instance_shape" {
   type = string
   default = "VM.Standard.E2.1.Micro"

@@ -34,6 +34,7 @@ module "fluxa_network"{
   subnet_dns_label = "fluxasubnet"
   route_table_display_name =  "fluxa_route_table"
   IG_display_name = "fluxa_gateway"
+  ssh_source_cidr = var.ssh_source_cidr
 
 }
 

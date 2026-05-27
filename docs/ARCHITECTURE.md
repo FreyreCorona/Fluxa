@@ -10,7 +10,7 @@ Estado actual:
 - k3s como runtime substrate
 - Tailscale mesh networking
 - GitHub-centric CI/CD
-- Terraform + CloudInit (sin Ansible)
+- Terraform + CloudInit
 - OCI Vault, Monitoring, Logging, Email Delivery
 
 Objetivo:
