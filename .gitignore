@@ -1,7 +1,5 @@
 # Terraform
 /terraform/.terraform
+/terraform/*.tfstate
+/terraform/*.tfstate.*
 /terraform/terraform.tfvars
-/tf/.terraform
-/tf/*.tfstate
-/tf/*.tfstate.*
-/tf/terraform.tfvars
