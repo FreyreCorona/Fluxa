@@ -23,3 +23,8 @@ variable "subnet_id" {
   type = string
   default = ""
 }
+
+variable "cloudInit_script" {
+  type = string
+  default = ""
+}

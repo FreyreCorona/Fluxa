@@ -43,6 +43,7 @@ resource "oci_core_instance" "module_instance" {
 
   metadata = {
     ssh_authorized_keys = (var.ssh_public_key != "") ? var.ssh_public_key : tls_private_key.module_ssh_key.public_key_openssh
+    user_data = base64encode(var.cloudInit_script)
   }
 }
 
