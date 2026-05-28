@@ -5,6 +5,10 @@ terraform {
         source = "oracle/oci"
         version = ">= 8.14"
       }
+      random = {
+        source = "hashicorp/random"
+        version = ">= 3.9"
+      }
     }
 
     backend "oci" {
@@ -49,13 +53,24 @@ module "fluxa_lb" {
   lb_backend_set_name = "fluxa_lb_backend_set"
 }
 
+resource "random_password" "k3s_token" {
+  length           = 32
+  special          = true
+  override_special = "_-"
+}
+
+
 /* Instances*/
-module "fluxa_instance_01" {
+module "fluxa_instance_01"  {
   source = "./modules/oci_micro_instance"
   compartment_id = var.compartment_id
   subnet_id = module.fluxa_network.subnet_id
   display_name = "worker-01"
   ssh_public_key = var.ssh_public_key
+  cloudInit_script = templatefile("${path.module}/cloud_init/worker.sh.tpl",{
+    edge_private_ip = module.fluxa_instance_02.private_ip
+    k3s_token = random_password.k3s_token.result
+  })
 }
 
 output "worker_public_ip" {
@@ -68,6 +83,11 @@ module "fluxa_instance_02" {
   subnet_id = module.fluxa_network.subnet_id
   display_name = "edge-01"
   ssh_public_key = var.ssh_public_key
+
+  cloudInit_script = templatefile("${path.module}/cloud_init/edge.sh.tpl",{
+    k3s_token = random_password.k3s_token.result
+    tailscale_auth_key = var.tailscale_auth_key
+  })
 }
 
 output "edge_public_ip" {

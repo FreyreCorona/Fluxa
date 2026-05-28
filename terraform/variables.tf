@@ -36,3 +36,8 @@ variable "instance_shape" {
   type = string
   default = "VM.Standard.E2.1.Micro"
 }
+
+variable "tailscale_auth_key" {
+  type = string
+  sensitive = true
+}
