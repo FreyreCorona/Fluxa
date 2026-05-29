@@ -54,6 +54,14 @@ resource "oci_core_security_list" "module_security_list" {
       min = "80"
     }
   }
+  ingress_security_rules {
+    protocol = "1"
+    source   = "10.0.0.0/16"
+  }
+  ingress_security_rules {
+    protocol = "6" 
+    source   = "10.0.0.0/16"
+  }
 }
 
 resource "oci_core_internet_gateway" "module_internet_gateway" {
