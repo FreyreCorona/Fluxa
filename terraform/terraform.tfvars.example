@@ -1,0 +1,8 @@
+tenancy_ocid       = "ocid1.tenancy.oc1..AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+user_ocid          = "ocid1.user.oc1..AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+compartment_id     = "ocid1.tenancy.oc1..AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+fingerprint        = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+private_key_path   = "/path/to/your/oci_api_key.pem"
+ssh_public_key     = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQAB... your-public-key"
+region             = "us-ashburn-1"
+tailscale_auth_key = "tskey-auth-XXXXXXXXXXXX"

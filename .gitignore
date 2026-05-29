@@ -1,5 +1,10 @@
 # Terraform
-/terraform/.terraform
+/terraform/.terraform/
 /terraform/*.tfstate
 /terraform/*.tfstate.*
 /terraform/terraform.tfvars
+/terraform/terraform.tfvars.local
+
+# Internal (not for public repo)
+AGENTS.md
+docs/
