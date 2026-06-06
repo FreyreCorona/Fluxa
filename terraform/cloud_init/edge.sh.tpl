@@ -5,8 +5,24 @@ packages:
   - docker.io
 runcmd: 
   - sudo fallocate -l 1G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile && echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-  - curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --disable-agent --write-kubeconfig-mode 644" K3S_TOKEN="${k3s_token}" sh -
+  - curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --write-kubeconfig-mode 644" K3S_TOKEN="${k3s_token}" sh -
+  - mkdir -p /var/lib/rancher/k3s/server/manifests
+  - |
+    cat > /var/lib/rancher/k3s/server/manifests/traefik-config.yaml << 'EOF'
+    apiVersion: helm.cattle.io/v1
+    kind: HelmChartConfig
+    metadata:
+      name: traefik
+      namespace: kube-system
+    spec:
+      valuesContent: |-
+        nodeSelector:
+          node-role.kubernetes.io/control-plane: "true"
+        tolerations:
+          - key: "node-role.kubernetes.io/control-plane"
+            operator: "Exists"
+            effect: "NoSchedule"
+        replicas: 1
+    EOF
   - curl -fsSL https://tailscale.com/install.sh | sh
   - sudo tailscale up --auth-key="${tailscale_auth_key}"
-  - sudo iptables -I INPUT 6 -p tcp --dport 6443 -j ACCEPT
-  - sudo iptables -I INPUT 6 -p tcp --dport 10250 -j ACCEPT
