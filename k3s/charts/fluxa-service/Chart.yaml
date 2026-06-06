@@ -1,0 +1,8 @@
+apiVersion: v2
+name: fluxa-service
+description: Deploys a service for a Fluxa customer (Deployment + Service + Ingress)
+
+type: application
+
+version: 0.1.0
+appVersion: "1.16.0"
