@@ -7,7 +7,7 @@ spec:
     configmaps: "10"
     persistentvolumeclaims: "4"
     pods: "4"
-    replicationcontrollers: "20"
+    count/deployments.apps: "5"
     secrets: "10"
     services: "10"
     services.loadbalancers: "2"
