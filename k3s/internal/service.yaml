@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluxa-service
+spec:
+  selector:
+    app: fluxa
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
