@@ -1756,7 +1756,7 @@ spec:
                       Used when the client does not have a custom domain.
                     type: string
                   servicePort:
-                    default: 80
+                    default: 8080
                     description: ServicePort is the port the Ingress forwards requests
                       to.
                     format: int32
@@ -1765,7 +1765,7 @@ spec:
                     type: integer
                 type: object
               port:
-                default: 80
+                default: 8080
                 description: Port is the container port the application listens on.
                 format: int32
                 maximum: 65535

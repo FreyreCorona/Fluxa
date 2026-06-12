@@ -51,7 +51,10 @@ var _ = Describe("FluxaService Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: fluxav1.FluxaServiceSpec{
+						Tier:  "tier_1",
+						Image: "nginx:latest",
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}

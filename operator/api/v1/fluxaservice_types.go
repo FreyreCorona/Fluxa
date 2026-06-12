@@ -45,7 +45,7 @@ type FluxaServiceSpec struct {
 
 	// Port is the container port the application listens on.
 	// +optional
-	// +kubebuilder:default=80
+	// +kubebuilder:default=8080
 	// +kubebuilder:validation:Minimum=3000
 	// +kubebuilder:validation:Maximum=65535
 	Port int32 `json:"port,omitempty"`
@@ -81,7 +81,7 @@ type IngressConfig struct {
 
 	// ServicePort is the port the Ingress forwards requests to.
 	// +optional
-	// +kubebuilder:default=80
+	// +kubebuilder:default=8080
 	// +kubebuilder:validation:Minimum=3000
 	// +kubebuilder:validation:Maximum=65535
 	ServicePort int32 `json:"servicePort,omitempty"`
