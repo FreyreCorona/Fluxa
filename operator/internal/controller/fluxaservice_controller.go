@@ -68,6 +68,11 @@ func (r *FluxaServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	// Re-fetch the CR after the finalizer update to avoid resourceVersion conflicts
+	if err := r.Get(ctx, req.NamespacedName, &fs); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
 	nsName := fs.Name
 
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: nsName}}
@@ -294,7 +299,9 @@ func (r *FluxaServiceReconciler) readyStatus(ctx context.Context, fs *fluxav1.Fl
 	fs.Status.ObservedGeneration = fs.Generation
 
 	if err := r.Status().Update(ctx, fs); err != nil {
-		return ctrl.Result{}, err
+		if !errors.IsConflict(err) {
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
@@ -305,7 +312,9 @@ func (r *FluxaServiceReconciler) failStatus(ctx context.Context, fs *fluxav1.Flu
 	fs.Status.ObservedGeneration = fs.Generation
 
 	if err := r.Status().Update(ctx, fs); err != nil {
-		return ctrl.Result{}, err
+		if !errors.IsConflict(err) {
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, fmt.Errorf("%s: %s", reason, message)
