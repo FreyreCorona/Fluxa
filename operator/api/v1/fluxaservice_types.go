@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -25,41 +26,95 @@ import (
 
 // FluxaServiceSpec defines the desired state of FluxaService
 type FluxaServiceSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
 
-	// foo is an example field of FluxaService. Edit fluxaservice_types.go to remove/update
+	// Tier defines the service tier (tier_1, tier_2, etc.)
+	// Determines ResourceQuota, LimitRange and NetworkPolicy.
 	// +optional
-	Foo *string `json:"foo,omitempty"`
+	// +kubebuilder:default=tier_1
+	Tier string `json:"tier,omitempty"`
+
+	// Image is the main container image to deploy (e.g. "nginx:latest")
+	// +required
+	Image string `json:"image"`
+
+	// Replicas is the number of pod replicas.
+	// +optional
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// Port is the container port the application listens on.
+	// +optional
+	// +kubebuilder:default=80
+	// +kubebuilder:validation:Minimum=3000
+	// +kubebuilder:validation:Maximum=65535
+	Port int32 `json:"port,omitempty"`
+
+	// Env defines environment variables for the main container.
+	// Uses the standard Kubernetes EnvVar type (supports Value and ValueFrom).
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// Containers defines additional sidecar containers.
+	// Uses standard Container type for maximum flexibility.
+	// +optional
+	Containers []corev1.Container `json:"containers,omitempty"`
+
+	// Ingress defines how external traffic routes to this service.
+	// +optional
+	Ingress *IngressConfig `json:"ingress,omitempty"`
+}
+
+// IngressConfig defines how external traffic reaches the service.
+type IngressConfig struct {
+
+	// Path is the URL path prefix for routing (e.g. "/acme").
+	// Used when the client does not have a custom domain.
+	// +optional
+	// +kubebuilder:default="/"
+	Path string `json:"path,omitempty"`
+
+	// Host is the custom domain for routing (e.g. "app.cliente.com").
+	// Overrides path-based routing when set.
+	// +optional
+	Host string `json:"host,omitempty"`
+
+	// ServicePort is the port the Ingress forwards requests to.
+	// +optional
+	// +kubebuilder:default=80
+	// +kubebuilder:validation:Minimum=3000
+	// +kubebuilder:validation:Maximum=65535
+	ServicePort int32 `json:"servicePort,omitempty"`
 }
 
 // FluxaServiceStatus defines the observed state of FluxaService.
 type FluxaServiceStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Namespace is the name of the namespace created for this service.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
 
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the FluxaService resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
+	// Conditions represent the current state of the FluxaService resource.
+	// Standard condition types:
+	// - "Ready": the resource is fully functional
 	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
+	// - "Degraded": the resource failed to reach its desired state
 	// +listType=map
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// ObservedGeneration is the last generation of the spec that was reconciled.
+	// +optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Namespaced,shortName=fs
+// +kubebuilder:printcolumn:name="Tier",type=string,JSONPath=`.spec.tier`
+// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`
+// +kubebuilder:printcolumn:name="Replicas",type=integer,JSONPath=`.spec.replicas`
+// +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.conditions[?(@.type=='Ready')].reason`
 
 // FluxaService is the Schema for the fluxaservices API
 type FluxaService struct {
