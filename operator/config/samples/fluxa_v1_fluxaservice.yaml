@@ -1,0 +1,9 @@
+apiVersion: fluxa.fluxa.io/v1
+kind: FluxaService
+metadata:
+  labels:
+    app.kubernetes.io/name: operator
+    app.kubernetes.io/managed-by: kustomize
+  name: fluxaservice-sample
+spec:
+  # TODO(user): Add fields here

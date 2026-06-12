@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- fluxa_v1_fluxaservice.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
