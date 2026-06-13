@@ -25,3 +25,26 @@ jobs:
           cache-dependency-path: operator/go.sum
       - run: go build ./...
       - run: go vet ./...
+
+  docker:
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: operator
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/fluxa/operator:latest
+            ghcr.io/${{ github.repository_owner }}/fluxa/operator:${{ github.sha }}
