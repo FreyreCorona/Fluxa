@@ -46,5 +46,5 @@ jobs:
           context: operator
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/fluxa/operator:latest
-            ghcr.io/${{ github.repository_owner }}/fluxa/operator:${{ github.sha }}
+            ghcr.io/freyrecorona/fluxa/operator:latest
+            ghcr.io/freyrecorona/fluxa/operator:${{ github.sha }}
