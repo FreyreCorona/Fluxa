@@ -1,0 +1,27 @@
+name: operator
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - operator/**
+  pull_request:
+    branches: [master]
+    paths:
+      - operator/**
+
+defaults:
+  run:
+    working-directory: operator
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: operator/go.sum
+      - run: go build ./...
+      - run: go vet ./...
