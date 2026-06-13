@@ -5,10 +5,12 @@ on:
     branches: [master]
     paths:
       - operator/**
+      - .github/workflows/operator.yml
   pull_request:
     branches: [master]
     paths:
       - operator/**
+      - .github/workflows/operator.yml
 
 defaults:
   run:
